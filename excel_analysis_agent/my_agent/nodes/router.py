@@ -6,7 +6,6 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from my_agent.core.infisical_client import get_secret
 from my_agent.models.state import ExcelAnalysisState, RouterDecision
 from my_agent.prompts.prompts import ROUTER_SYS_PROMPT, ROUTER_USER_PROMPT
 
@@ -29,9 +28,7 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     print("🧭 Router: Classifying user query...")
 
     # Initialize LLM with structured output
-    llm = init_chat_model(
-        model="gpt-4o", api_key=get_secret("OPENAI_API_KEY"), temperature=0
-    )
+    from my_agent.core.llm_client import litellm_completion
 
     # Get the latest user query
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
@@ -78,15 +75,23 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     # Define structured output schema
     class RouterOutput(BaseModel):
         route: str = Field(
-            description="Classification: 'chat', 'analysis', or 'analysis_followup'"
+            description="Classification: 'chat', 'analysis', or 'analysis_followup'",
+            validation_alias="classification"
         )
         reasoning: str = Field(
             description="Explanation for this classification"
         )
 
     # Get structured output
-    llm_with_structure = llm.with_structured_output(RouterOutput)
-    response = await llm_with_structure.ainvoke([system_prompt, user_prompt])
+    response = await litellm_completion(
+        messages=[system_prompt, user_prompt],
+        temperature=0,
+        response_format=RouterOutput
+    )
+    
+    print("[DEBUG] Router Decision obtained.")
+    print(f"[DEBUG] Route: {response.route}")
+    print(f"[DEBUG] Reasoning: {response.reasoning}")
 
     route_decision: RouterDecision = {
         "route": response.route,

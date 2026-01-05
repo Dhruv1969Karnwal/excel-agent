@@ -5,7 +5,6 @@ from typing import Any, Dict
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from my_agent.core.infisical_client import get_secret
 from my_agent.models.state import ExcelAnalysisState
 
 
@@ -44,11 +43,7 @@ async def chatbot_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     print("💬 Chatbot: Responding to general query...")
 
     # Initialize LLM
-    llm = init_chat_model(
-        model="gpt-4o",
-        api_key=get_secret("OPENAI_API_KEY"),
-        temperature=0.7,  # Slightly higher temperature for conversational responses
-    )
+    from my_agent.core.llm_client import litellm_completion
 
     # Get user's query from messages
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
@@ -59,7 +54,10 @@ async def chatbot_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     user_prompt = HumanMessage(content=str(user_query))
 
     # Get response from LLM
-    response = await llm.ainvoke([system_prompt, user_prompt])
+    response = await litellm_completion(
+        messages=[system_prompt, user_prompt],
+        temperature=0.7
+    )
 
     print(f"✅ Chatbot: Response generated ({len(response.content)} characters)")
 

@@ -7,7 +7,6 @@ from typing import Any, Dict
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from my_agent.core.infisical_client import get_secret
 from my_agent.models.state import ExcelAnalysisState
 from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
 
@@ -31,9 +30,7 @@ async def planning_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     print("📋 Planning: Creating analysis plan...")
 
     # Initialize LLM
-    llm = init_chat_model(
-        model="gpt-4o", api_key=get_secret("OPENAI_API_KEY"), temperature=0
-    )
+    from my_agent.core.llm_client import litellm_completion
 
     # Get user query
     user_query = state.get("user_query", "Analyze the data")
@@ -54,7 +51,10 @@ async def planning_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     )
 
     # Generate the plan
-    response = await llm.ainvoke([system_prompt, user_prompt])
+    response = await litellm_completion(
+        messages=[system_prompt, user_prompt],
+        temperature=0
+    )
 
     # Parse response to extract text plan and structured steps
     response_text = str(response.content)
@@ -87,11 +87,13 @@ async def planning_node(state: ExcelAnalysisState) -> Dict[str, Any]:
                 continue
 
     if structured_steps:
-        print(f"✅ Created {len(structured_steps)} structured analysis steps")
+        print(f"[DEBUG] Created {len(structured_steps)} structured analysis steps")
     else:
-        print("⚠️ No structured steps found, using text plan only")
+        print("[DEBUG] No structured steps found, using text plan only")
 
-    print(f"✅ Planning: Analysis plan created")
+    print(f"[DEBUG] Planning: Analysis plan created with {len(structured_steps)} structured steps.")
+    for step in structured_steps:
+        print(f"  - Step {step['order']}: {step['description']}")
 
     return {
         "analysis_plan": analysis_plan_text,

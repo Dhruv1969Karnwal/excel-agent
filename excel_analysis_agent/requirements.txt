@@ -5,6 +5,7 @@ langchain
 langchain-core
 langchain-openai
 langgraph
+litellm
 
 # Data processing (for sandbox)
 pandas

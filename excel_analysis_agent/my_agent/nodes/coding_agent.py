@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Sequence
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from my_agent.core.infisical_client import get_secret
 from my_agent.helpers.sandbox import PLOTS_DIR
 from my_agent.models.state import AnalysisStep, CodingSubgraphState
 from my_agent.prompts.prompts import CODING_AGENT_SYS_PROMPT, CODING_AGENT_USER_PROMPT
@@ -58,22 +57,19 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         Dictionary with execution_result and messages updates
     """
     code_iterations = state.get("code_iterations", 0)
-    print(f"💻 Coding Agent: Starting iteration {code_iterations + 1}...")
+    print(f"[ACTION] Coding Agent: Starting iteration {state.get('code_iterations', 0) + 1}...")
 
     # Display step progress if available
     analysis_steps = state.get("analysis_steps", [])
     if analysis_steps:
-        display_step_progress(analysis_steps)
+        print("[DEBUG] Current Analysis Progress:")
+        for step in state["analysis_steps"]:
+            status = "[DONE]" if step["status"] == "completed" else "[TODO]"
+            print(f"   {status} {step['order']}. {step['description']}")
 
     # Initialize LLM with tool calling
-    llm = init_chat_model(
-        model="gpt-5",
-        api_key=get_secret("OPENAI_API_KEY"),
-        temperature=0,
-    )
-
-    # Bind all tools to the LLM: Python REPL, bash (for pip install), and think
-    llm_with_tools = llm.bind_tools([python_repl_tool, bash_tool, think_tool])
+    from my_agent.core.llm_client import litellm_completion
+    from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool
 
     # Prepare the messages
     system_prompt = SystemMessage(content=CODING_AGENT_SYS_PROMPT)
@@ -106,7 +102,11 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         messages = [system_prompt] + conversation_history
 
     # Invoke the LLM
-    response = await llm_with_tools.ainvoke(messages)
+    response = await litellm_completion(
+        messages=messages,
+        tools=[python_repl_tool, bash_tool, think_tool],
+        temperature=0
+    )
 
     print("✅ Coding Agent: Received response from LLM")
 
@@ -275,9 +275,11 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
     from datetime import datetime
     from langchain_core.messages import ToolMessage
 
-    print("📝 Finalizing analysis and extracting artifacts...")
+    print("[ACTION] Finalizing analysis and extracting artifacts...")
 
     # Collect all artifacts from tool executions
+    internal_messages = state["messages"]
+    print(f"[DEBUG] Processing {len(internal_messages)} internal messages for artifacts.")
     artifacts = []
     tool_messages = [
         msg for msg in state["messages"]
@@ -339,8 +341,10 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
         "description": "Final analysis and findings",
         "timestamp": datetime.now().isoformat()
     })
-
-    print(f"📊 Extracted {len(artifacts)} artifacts (plots, tables, insights)")
+    print(f"[DEBUG] Analysis finalized. Length: {len(final_analysis_text)} characters.")
+    print(f"[DEBUG] Extracted {len(artifacts)} artifacts (plots, tables, insights)")
+    for art in artifacts:
+        print(f"  - [{art['type'].upper()}] {art['description']}")
 
     from pathlib import Path
 

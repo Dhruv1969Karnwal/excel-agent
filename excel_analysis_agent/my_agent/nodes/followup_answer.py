@@ -5,7 +5,6 @@ from typing import Any, Dict
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from my_agent.core.infisical_client import get_secret
 from my_agent.models.state import ExcelAnalysisState
 from my_agent.prompts.prompts import FOLLOWUP_ANSWER_SYS_PROMPT, FOLLOWUP_ANSWER_USER_PROMPT
 
@@ -28,9 +27,7 @@ async def followup_answer_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     print("💡 Follow-up Answer: Answering from existing context...")
 
     # Initialize LLM
-    llm = init_chat_model(
-        model="gpt-4o", api_key=get_secret("OPENAI_API_KEY"), temperature=0
-    )
+    from my_agent.core.llm_client import litellm_completion
 
     # Get the user's query
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
@@ -56,7 +53,10 @@ async def followup_answer_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     )
 
     # Get response
-    response = await llm.ainvoke([system_prompt, user_prompt])
+    response = await litellm_completion(
+        messages=[system_prompt, user_prompt],
+        temperature=0
+    )
 
     print(f"✅ Follow-up Answer: Response generated")
 

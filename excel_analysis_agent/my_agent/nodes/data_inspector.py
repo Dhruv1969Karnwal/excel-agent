@@ -54,7 +54,7 @@ async def data_inspector_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             "Please start the server in a separate terminal:\n"
             "  python run_sandbox_server.py"
         )
-        print(f"❌ {error_msg}")
+        print(f"[ERROR] {error_msg}")
         return {
             "data_context": f"Error: {error_msg}",
             "messages": [AIMessage(
@@ -65,15 +65,16 @@ async def data_inspector_node(state: ExcelAnalysisState) -> Dict[str, Any]:
 
     # Reset the Python REPL execution context for a clean start
     await reset_execution_context()
+    print("[DEBUG] Execution context reset.")
 
-    print("📊 Data Inspector: Analyzing Excel file...")
+    print("[ACTION] Data Inspector: Analyzing Excel file...")
 
     # Get file path from state
     excel_path = state.get("excel_file_path")
 
     if not excel_path:
         # No file path - this shouldn't happen if router works correctly
-        print("❌ No excel_file_path found in state!")
+        print("[ERROR] No excel_file_path found in state!")
         return {
             "data_context": "Error: No Excel file path was provided.",
             "messages": [AIMessage(
@@ -82,7 +83,7 @@ async def data_inspector_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             )]
         }
 
-    print(f"📎 Analyzing file: {excel_path}")
+    print(f"[DEBUG] Analyzing file: {excel_path}")
 
     # Load and analyze the Excel file
     try:
@@ -95,8 +96,10 @@ async def data_inspector_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         analysis = await analyze_dataframe(df)
         data_description = await generate_data_description(analysis)
 
+        print(f"[DEBUG] Data Inspector: Analysis complete. Found {analysis['num_rows']} rows and {analysis['num_columns']} columns.")
+        print(f"[DEBUG] Data Summary keys: {list(analysis.keys())}")
         print(
-            f"✅ Data Inspector: Analysis complete. Found {analysis['num_rows']} rows and {analysis['num_columns']} columns."
+            f"[INFO] Data Inspector: Analysis complete. Found {analysis['num_rows']} rows and {analysis['num_columns']} columns."
         )
 
         # Get file name using asyncio.to_thread to avoid blocking
