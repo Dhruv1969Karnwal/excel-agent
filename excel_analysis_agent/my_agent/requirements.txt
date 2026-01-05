@@ -1,0 +1,17 @@
+langgraph
+langchain_community
+python-dotenv 
+psycopg[binary]
+qdrant-client
+langchain
+langchain_openai
+structlog
+pydantic
+python-dotenv
+qdrant-client  
+langchain-openai
+infisicalsdk
+logging_config
+pandas
+openpyxl
+matplotlib

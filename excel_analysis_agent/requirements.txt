@@ -1,0 +1,21 @@
+# Core dependencies for Excel Analysis Agent
+
+# LangChain and LangGraph
+langchain
+langchain-core
+langchain-openai
+langgraph
+
+# Data processing (for sandbox)
+pandas
+numpy
+openpyxl
+matplotlib
+tabulate
+
+# HTTP client for sandbox communication
+httpx
+
+# FastAPI server for sandbox (dev dependency)
+fastapi
+uvicorn[standard]
