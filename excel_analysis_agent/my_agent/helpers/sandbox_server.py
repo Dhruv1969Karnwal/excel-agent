@@ -97,13 +97,16 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
 
     # Get or create session context
     if session_id not in SESSION_CONTEXTS:
-        SESSION_CONTEXTS[session_id] = {
-            # Inject plots_dir as a pre-defined variable so agent can use it directly
-            "plots_dir": str(PLOTS_DIR),
-        }
+        SESSION_CONTEXTS[session_id] = {}
         print(f"📝 Created new session: {session_id}")
 
     execution_context = SESSION_CONTEXTS[session_id]
+    
+    # Ensure critical variables are always present in the context
+    if "plots_dir" not in execution_context:
+        execution_context["plots_dir"] = str(PLOTS_DIR)
+    if "tables_dir" not in execution_context:
+        execution_context["tables_dir"] = str(TABLES_DIR)
 
     # Force matplotlib to use non-GUI backend
     try:
@@ -237,7 +240,11 @@ async def reset_session(request: ResetRequest):
     session_id = request.session_id
 
     if session_id in SESSION_CONTEXTS:
-        SESSION_CONTEXTS[session_id] = {}
+        # Re-initialize with default variables
+        SESSION_CONTEXTS[session_id] = {
+            "plots_dir": str(PLOTS_DIR),
+            "tables_dir": str(TABLES_DIR),
+        }
         print(f"🔄 Reset session: {session_id}")
         return {"success": True, "message": f"Session {session_id} reset successfully"}
     else:

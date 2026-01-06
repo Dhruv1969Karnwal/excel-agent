@@ -14,8 +14,8 @@ async def main():
     print(f"📂 Found Excel file: {excel_file_path}")
     
     # Test query
-    query = "List down count of employee along with their name whose annual salary is more than $100000 and country is United States"
-    
+    # query = "List down count of employee along with their name whose annual salary is more than $100000 and country is United States"
+    query = "Show me a chart of employees by gender"
     print(f"🤖 User Query: {query}")
     print("🚀 Starting analysis (this may take a minute as LiteLLM is called)...")
     
@@ -40,12 +40,101 @@ async def main():
         last_message = result["messages"][-1]
         print(last_message.content)
 
+    # ============================================
+    # DETAILED ARTIFACT INFORMATION
+    # ============================================
     print("\n" + "="*50)
+    print("📦 ARTIFACTS DETAILED VIEW")
+    print("="*50 + "\n")
+
     if "artifacts" in result and result["artifacts"]:
-        print(f"📊 Generated {len(result['artifacts'])} artifacts (plots, tables, etc.)")
+        print(f"📊 Total Artifacts Generated: {len(result['artifacts'])}\n")
+
+        # Count by type
+        type_counts = {}
         for artifact in result["artifacts"]:
-            if artifact["type"] == "plot":
-                print(f"   - Plot saved at: {artifact['content']}")
+            artifact_type = artifact.get("type", "unknown")
+            type_counts[artifact_type] = type_counts.get(artifact_type, 0) + 1
+
+        print("📈 Artifacts by Type:")
+        for atype, count in type_counts.items():
+            icon = {
+                "plot": "🖼️",
+                "table": "📋",
+                "insight": "💡",
+                "code": "📝"
+            }.get(atype, "📦")
+            print(f"   {icon} {atype.capitalize()}: {count}")
+        print()
+
+        # Display each artifact in detail
+        for i, artifact in enumerate(result["artifacts"], 1):
+            print(f"{'─'*50}")
+            print(f"Artifact #{i}")
+            print(f"{'─'*50}")
+
+            # Type
+            artifact_type = artifact.get("type", "unknown")
+            print(f"📌 Type: {artifact_type}")
+
+            # Description
+            description = artifact.get("description", "No description")
+            print(f"📝 Description: {description}")
+
+            # Timestamp
+            timestamp = artifact.get("timestamp", "No timestamp")
+            print(f"🕐 Timestamp: {timestamp}")
+
+            # Content based on type
+            content = artifact.get("content", "")
+
+            if artifact_type == "plot":
+                # Plot: show file path
+                print(f"📁 File Path: {content}")
+                # Check if file exists
+                if os.path.exists(content):
+                    print(f"✅ File exists!")
+                else:
+                    print(f"⚠️ File NOT found at specified path")
+            elif artifact_type == "table":
+                # Table: show markdown preview (first 20 lines)
+                print(f"📋 Table Preview (first 20 lines):\n")
+                lines = content.split("\n")[:20]
+                for line in lines:
+                    print(f"   {line}")
+                if len(content.split("\n")) > 20:
+                    print(f"   ... (truncated, {len(content.split('|'))} columns total)")
+            elif artifact_type == "insight":
+                # Insight: show text content (first 500 chars)
+                print(f"💡 Insight Content:\n")
+                preview = content[:500] if len(content) > 500 else content
+                print(f"   {preview}")
+                if len(content) > 500:
+                    print(f"   ... ({len(content)} total characters)")
+            elif artifact_type == "code":
+                # Code: show code snippet
+                print(f"📝 Code Content:\n")
+                preview = content[:300] if len(content) > 300 else content
+                print(f"   {preview}")
+                if len(content) > 300:
+                    print(f"   ... ({len(content)} total characters)")
+            else:
+                # Unknown type
+                print(f"📦 Content: {content[:200]}...")
+
+            print()  # Empty line between artifacts
+
+        print(f"{'─'*50}")
+        print(f"✅ All {len(result['artifacts'])} artifacts displayed")
+
+    else:
+        print("📭 No artifacts were generated for this analysis.")
+        print("\n💡 Tips to generate artifacts:")
+        print("   - Ask for visualizations: 'Show me a chart of...'")
+        print("   - Request data tables: 'Display the filtered data'")
+        print("   - The agent auto-generates insights for analysis results")
+
+    print("\n" + "="*50)
 
 if __name__ == "__main__":
     asyncio.run(main())
