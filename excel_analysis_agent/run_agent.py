@@ -1,9 +1,18 @@
 import asyncio
+import logging
 import os
 from langchain_core.messages import HumanMessage
 from my_agent.agent import graph
 
+# Enable logging for LangGraph internals
+logging.basicConfig(level=logging.INFO)
+
 async def main():
+    # Generate and print Mermaid diagram for static visualization
+    mermaid_code = graph.get_graph().draw_mermaid()
+    print("📊 Graph Mermaid Diagram:")
+    print(mermaid_code)
+    print("\n" + "="*50 + "\n")
     # Path to the Excel file
     excel_file_path = r"C:\Users\Dhruv\Downloads\esd.xlsx"
     
@@ -25,14 +34,29 @@ async def main():
         "excel_file_path": excel_file_path,
     }
     
-    # Run the graph using ainvoke to get the final result directly
-    # (since we don't have a checkpointer configured for aget_state)
-    result = await graph.ainvoke(initial_state)
-    
+    # Run the graph with streaming to trace steps
+    print("🔍 Tracing agent steps...\n")
+    result = None
+    async for event in graph.astream(initial_state, stream_mode="values"):
+        result = event  # Update result with latest state
+        # Print key state changes for tracing
+        if "messages" in event and event["messages"]:
+            last_msg = event["messages"][-1]
+            print(f"📝 Message: {last_msg.content[:100]}...")
+        if "route_decision" in event and event["route_decision"]:
+            print(f"🛤️ Route Decision: {event['route_decision']}")
+        if "supervisor_decision" in event and event["supervisor_decision"]:
+            print(f"👨‍💼 Supervisor Decision: {event['supervisor_decision']}")
+        if "data_context" in event and event["data_context"]:
+            print(f"📊 Data Context Loaded: {event['data_context'].get('file_path', 'N/A')}")
+        if "artifacts" in event and event["artifacts"]:
+            print(f"📦 Artifacts Added: {len(event['artifacts'])} total")
+        print("─" * 30)  # Separator
+
     print("\n" + "="*50)
     print("✅ ANALYSIS COMPLETE")
     print("="*50 + "\n")
-    
+
     if "final_analysis" in result and result["final_analysis"]:
         print(result["final_analysis"])
     else:
