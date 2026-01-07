@@ -51,17 +51,17 @@ async def litellm_completion(
     formatted_messages = [convert_message_to_dict(m) for m in messages]
     
     # [LOG] LLM Input Preparation
-    print("-" * 80)
-    print("[DEBUG] Preparing LiteLLM Request")
-    print(f"[DEBUG] Model: {MODEL}")
-    print(f"[DEBUG] Base URL: {BASE_URL}")
-    print("[DEBUG] Messages sent to LLM:")
+    # print("-" * 80)
+    # print("[DEBUG] Preparing LiteLLM Request")
+    # print(f"[DEBUG] Model: {MODEL}")
+    # print(f"[DEBUG] Base URL: {BASE_URL}")
+    # print("[DEBUG] Messages sent to LLM:")
     for i, msg in enumerate(formatted_messages):
         role = msg.get("role", "unknown")
         content = msg.get("content", "")
         # Handle cases where content might be a list (multimodal)
         display_content = content[:500] + "..." if isinstance(content, str) and len(content) > 500 else content
-        print(f"  {i+1}. role={role}: {display_content}")
+        # print(f"  {i+1}. role={role}: {display_content}")
 
     # Prepare litellm arguments
     litellm_kwargs = {
@@ -76,7 +76,7 @@ async def litellm_completion(
     }
     
     if tools:
-        print("[DEBUG] Tools provided to LLM:")
+        # print("[DEBUG] Tools provided to LLM:")
         litellm_kwargs["tools"] = []
         for tool in tools:
             if hasattr(tool, "args_schema") and tool.args_schema:
@@ -90,7 +90,7 @@ async def litellm_completion(
                     }
                 }
                 litellm_kwargs["tools"].append(tool_def)
-                print(f"  - function: {tool.name}")
+                # print(f"  - function: {tool.name}")
             else:
                 tool_def = {
                     "type": "function",
@@ -101,7 +101,7 @@ async def litellm_completion(
                     }
                 }
                 litellm_kwargs["tools"].append(tool_def)
-                print(f"  - function (no schema): {tool.name}")
+                # print(f"  - function (no schema): {tool.name}")
 
     if response_format:
         litellm_kwargs["response_format"] = {"type": "json_object"}
@@ -110,7 +110,7 @@ async def litellm_completion(
         keys_str = "\n".join(keys_desc)
         instruction = f"\n\nCRITICAL: Return your response ONLY as a JSON object with the following keys:\n{keys_str}\n\nExample:\n{{\n  " + ',\n  '.join([f'"{k}": "..." ' for k in properties.keys()]) + "\n}"
         
-        print("[DEBUG] Structured output requested. Appending schema instruction to last message.")
+        # print("[DEBUG] Structured output requested. Appending schema instruction to last message.")
         if isinstance(formatted_messages[-1]["content"], str):
              formatted_messages[-1]["content"] += instruction
         else:
@@ -124,35 +124,35 @@ async def litellm_completion(
                  formatted_messages[-1]["content"].append({"type": "text", "text": instruction})
 
     try:
-        print("[ACTION] Calling LiteLLM API...")
+        # print("[ACTION] Calling LiteLLM API...")
         response = await litellm.acompletion(**litellm_kwargs)
         
         choice = response.choices[0].message
         content = choice.content
         
-        print("[DEBUG] LiteLLM Response Received")
-        if content:
-            print("[DEBUG] Final Content Response:")
-            print(content)
+        # print("[DEBUG] LiteLLM Response Received")
+        # if content:
+            # print("[DEBUG] Final Content Response:")
+            # print(content)
             
         # If we requested structured output (response_format), parse it
         if response_format and content:
             try:
-                print("[ACTION] Parsing structured output...")
+                # print("[ACTION] Parsing structured output...")
                 clean_content = content.replace("```json", "").replace("```", "").strip()
                 parsed_data = json.loads(clean_content)
                 result = response_format(**parsed_data)
-                print("[DEBUG] Successfully parsed structured output")
-                print("-" * 80)
+                # print("[DEBUG] Successfully parsed structured output")
+                # print("-" * 80)
                 return result
             except Exception as e:
-                print(f"[ERROR] Failed to parse structured output: {e}\nRaw Content: {content}")
+                # print(f"[ERROR] Failed to parse structured output: {e}\nRaw Content: {content}")
                 raise
             
         # Handle tool calls
         tool_calls = []
         if hasattr(choice, "tool_calls") and choice.tool_calls:
-            print(f"[DEBUG] Tool calls detected: {len(choice.tool_calls)}")
+            # print(f"[DEBUG] Tool calls detected: {len(choice.tool_calls)}")
             for tc in choice.tool_calls:
                 tc_data = {
                     "name": tc.function.name,
@@ -160,12 +160,12 @@ async def litellm_completion(
                     "id": tc.id
                 }
                 tool_calls.append(tc_data)
-                print(f"  - tool: {tc.function.name}, args: {tc.function.arguments}")
+                # print(f"  - tool: {tc.function.name}, args: {tc.function.arguments}")
         
-        print("-" * 80)
+        # print("-" * 80)
         return AIMessage(content=content or "", tool_calls=tool_calls)
         
     except Exception as e:
-        print(f"[ERROR] LiteLLM API call or processing failed: {e}")
-        print("-" * 80)
+        # print(f"[ERROR] LiteLLM API call or processing failed: {e}")
+        # print("-" * 80)
         raise

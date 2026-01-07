@@ -1,25 +1,44 @@
 from langgraph.graph import END, START, StateGraph
 
 from my_agent.graphs.coding_subgraph import create_coding_subgraph
-from my_agent.models.state import ExcelAnalysisState
+from my_agent.models.state import UnifiedAnalysisState
 from my_agent.nodes.chat import chat_node
-from my_agent.nodes.data_inspector import data_inspector_node
+from my_agent.nodes.asset_dispatcher import asset_dispatcher_node
 from my_agent.nodes.followup_answer import followup_answer_node
 from my_agent.nodes.planning import planning_node
 from my_agent.nodes.router import router_node
 from my_agent.nodes.supervisor import supervisor_node
 
+# Import and register all pipelines
+from my_agent.pipelines.registry import registry
+from my_agent.pipelines.excel import ExcelPipeline
+from my_agent.pipelines.document import DocumentPipeline
+from my_agent.pipelines.powerpoint import PowerPointPipeline
 
-def route_after_router(state: ExcelAnalysisState) -> str:
+# Register pipelines at module load
+# This happens once when the module is imported
+def _register_pipelines():
+    """Register all available asset pipelines."""
+    if not registry.supported_extensions:
+        registry.register(ExcelPipeline())
+        registry.register(DocumentPipeline())
+        registry.register(PowerPointPipeline())
+
+_register_pipelines()
+
+
+def route_after_router(state: UnifiedAnalysisState) -> str:
     """
     Conditional edge function after router_node.
 
     Routes based on the router's classification and data context validation:
     - "chat" -> chat_node
-    - "analysis" -> check if data_inspector needed:
-        - If data_context missing or file changed -> data_inspector
+    - "analysis" -> check if data inspection needed:
+        - If data_context missing or file changed -> asset_dispatcher
         - If data_context exists and file matches -> supervisor
     - "analysis_followup" -> supervisor_node
+    
+    Supports both new file_path and legacy excel_file_path for backward compatibility.
     """
     import os
 
@@ -37,25 +56,26 @@ def route_after_router(state: ExcelAnalysisState) -> str:
     # Route 3: New analysis request -> check if data inspection needed
     elif route == "analysis":
         data_context = state.get("data_context")
-        excel_file_path = state.get("excel_file_path")
+        # Support both new file_path and legacy excel_file_path
+        file_path = state.get("file_path") or state.get("excel_file_path")
 
         # No context exists -> need inspection
         if not data_context:
-            print("🔍 No data context found, routing to data_inspector")
-            return "data_inspector"
+            print("🔍 No data context found, routing to asset_dispatcher")
+            return "asset_dispatcher"
 
         # No file path provided -> need inspection
-        if not excel_file_path:
-            print("⚠️ No excel_file_path provided, routing to data_inspector")
-            return "data_inspector"
+        if not file_path:
+            print("⚠️ No file_path provided, routing to asset_dispatcher")
+            return "asset_dispatcher"
 
         # Check if file path matches (use os.path.abspath to avoid blocking resolve())
         stored_path = data_context.get("file_path", "")
-        current_path = os.path.abspath(excel_file_path)
+        current_path = os.path.abspath(file_path)
 
         if stored_path != current_path:
-            print("📝 File path changed, routing to data_inspector")
-            return "data_inspector"
+            print("📝 File path changed, routing to asset_dispatcher")
+            return "asset_dispatcher"
 
         print("✅ Data context exists and file matches, routing to supervisor")
         return "supervisor"
@@ -64,7 +84,7 @@ def route_after_router(state: ExcelAnalysisState) -> str:
     return "chat"
 
 
-def route_after_supervisor(state: ExcelAnalysisState) -> str:
+def route_after_supervisor(state: UnifiedAnalysisState) -> str:
     """
     Conditional edge function after supervisor_node.
 
@@ -81,11 +101,11 @@ def route_after_supervisor(state: ExcelAnalysisState) -> str:
         return "followup_answer"
 
 
-def create_excel_analysis_graph():
+def create_analysis_graph():
     """
-    Create and compile the Excel Analysis Agent graph with intelligent LLM-based routing.
-
-    NEW ARCHITECTURE:
+    Create and compile the Unified Analysis Agent graph with intelligent LLM-based routing.
+    
+    UNIFIED ARCHITECTURE (supports Excel, Documents, PowerPoint):
 
     Workflow:
     1. START -> router_node (LLM classifies query)
@@ -96,10 +116,14 @@ def create_excel_analysis_graph():
        - "analysis_followup": Follow-up on previous analysis -> supervisor_node
 
     3. check_data_context (validates file_path):
-       - If data_context missing OR file changed -> data_inspector_node
+       - If data_context missing OR file changed -> asset_dispatcher_node
        - If data_context exists AND file matches -> supervisor_node
 
-    4. data_inspector_node -> supervisor_node
+    4. asset_dispatcher_node (detects file type, routes to correct pipeline):
+       - Excel (.xlsx, .xls, .csv) -> Excel pipeline inspection
+       - Documents (.docx, .pdf, .txt, .md) -> Document pipeline inspection
+       - PowerPoint (.pptx, .ppt) -> PowerPoint pipeline inspection
+       -> supervisor_node
 
     5. supervisor_node (evaluates if new code execution needed):
        - needs_analysis=True -> planning_node
@@ -110,8 +134,11 @@ def create_excel_analysis_graph():
     7. followup_answer_node -> END
 
     Key Features:
+    - Multi-asset support (Excel, Documents, PowerPoint)
+    - Pluggable pipeline architecture for easy asset type additions
     - LLM-based query classification with structured output
     - Smart file path validation to skip redundant data inspection
+    - Context caching - same file won't be re-inspected
     - Supervisor evaluates if analysis needed or can answer from context
     - Separate planning node for detailed analysis plans
     - Direct answer path for follow-up questions that don't need code
@@ -129,13 +156,13 @@ def create_excel_analysis_graph():
     Returns:
         Compiled LangGraph workflow
     """
-    # Initialize the graph with our custom state
-    workflow = StateGraph(ExcelAnalysisState)
+    # Initialize the graph with unified state
+    workflow = StateGraph(UnifiedAnalysisState)
 
     # Add all nodes
     workflow.add_node("router", router_node)
     workflow.add_node("chat", chat_node)
-    workflow.add_node("data_inspector", data_inspector_node)
+    workflow.add_node("asset_dispatcher", asset_dispatcher_node)  # Replaces data_inspector
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("planning", planning_node)
     workflow.add_node("followup_answer", followup_answer_node)
@@ -153,13 +180,13 @@ def create_excel_analysis_graph():
         route_after_router,
         {
             "chat": "chat",
-            "data_inspector": "data_inspector",
+            "asset_dispatcher": "asset_dispatcher",
             "supervisor": "supervisor",
         },
     )
 
-    # After data inspection, always go to supervisor
-    workflow.add_edge("data_inspector", "supervisor")
+    # After asset dispatch, always go to supervisor
+    workflow.add_edge("asset_dispatcher", "supervisor")
 
     # Supervisor conditional routing based on needs_analysis decision
     workflow.add_conditional_edges(
@@ -185,5 +212,12 @@ def create_excel_analysis_graph():
     return graph
 
 
+# Backward compatibility alias
+def create_excel_analysis_graph():
+    """DEPRECATED: Use create_analysis_graph() instead. Kept for backward compatibility."""
+    return create_analysis_graph()
+
+
 # Create the graph instance for LangGraph Studio
-graph = create_excel_analysis_graph()
+graph = create_analysis_graph()
+

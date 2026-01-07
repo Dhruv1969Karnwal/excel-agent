@@ -40,7 +40,7 @@ async def chatbot_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with messages update
     """
-    print("💬 Chatbot: Responding to general query...")
+    print("Chatbot: Responding to general query...")
 
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
@@ -53,12 +53,14 @@ async def chatbot_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     system_prompt = SystemMessage(content=CHATBOT_SYSTEM_PROMPT)
     user_prompt = HumanMessage(content=str(user_query))
 
+    print(f'[Chatbot DEBUG] SYSTEM PROMPT: {system_prompt.content}')
+    print(f'[Chatbot DEBUG] USER PROMPT: {user_prompt.content}')
     # Get response from LLM
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
         temperature=0.7
     )
 
-    print(f"✅ Chatbot: Response generated ({len(response.content)} characters)")
+    print(f"[Chatbot DEBUG] RESPONSE: {response.content}")
 
     return {"messages": [response]}

@@ -59,6 +59,7 @@ class SandboxClient:
                     json={"code": code, "session_id": self.session_id},
                 )
                 response.raise_for_status()
+                print(f"[Sandbox Client DEBUG inside sandbox_client.py] Code executed successfully with json response: {response.json()}")
                 return response.json()
         except httpx.ConnectError:
             raise ConnectionError(

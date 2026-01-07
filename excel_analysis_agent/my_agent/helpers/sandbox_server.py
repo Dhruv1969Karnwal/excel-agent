@@ -9,6 +9,7 @@ Run this server in a separate terminal:
 The server will run on http://localhost:8765
 """
 
+import asyncio
 import sys
 import traceback
 from datetime import datetime
@@ -125,18 +126,22 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
     tables_found = []
 
     try:
-        import asyncio
+        # Capture output
+        output = redirected_output.getvalue()
+
+        # Get initial list of plots to detect new ones
+        initial_plots = set(p.name for p in PLOTS_DIR.glob("*"))
 
         # Wrap exec in asyncio.to_thread to avoid blocking the event loop
         await asyncio.to_thread(
             exec, code, {"__builtins__": __builtins__}, execution_context
         )
 
-        # Get captured output
-        output = redirected_output.getvalue()
-
-        # Note: Plot saving is now handled by the agent using plt.savefig()
-        # The agent has access to PLOTS_DIR path and can save plots with semantic names
+        # Detect new plots
+        current_plots = set(p.name for p in PLOTS_DIR.glob("*"))
+        new_plots = current_plots - initial_plots
+        for plot_name in new_plots:
+            plots_saved.append(str(PLOTS_DIR / plot_name))
 
         # Auto-detect and format pandas DataFrames
         try:

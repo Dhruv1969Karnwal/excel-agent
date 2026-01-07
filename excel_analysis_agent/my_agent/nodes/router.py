@@ -25,7 +25,7 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with route_decision update
     """
-    print("🧭 Router: Classifying user query...")
+    print("Router: Classifying user query...")
 
     # Initialize LLM with structured output
     from my_agent.core.llm_client import litellm_completion
@@ -33,7 +33,7 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     # Get the latest user query
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
     if not user_messages:
-        print("⚠️ No user messages found, defaulting to chat")
+        
         return {
             "route_decision": {
                 "route": "chat",
@@ -49,6 +49,7 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         f"{'User' if isinstance(msg, HumanMessage) else 'Assistant'}: {msg.content[:200]}..."
         for msg in recent_messages
     ])
+
 
     # Check if data context exists
     data_context = state.get("data_context")
@@ -82,6 +83,9 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             description="Explanation for this classification"
         )
 
+    print(f"[DEBUG ROUTER] SYSTEM PROMPT: {system_prompt.content}")
+    print(f"[DEBUG ROUTER] USER PROMPT: {user_prompt.content}")
+
     # Get structured output
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
@@ -89,17 +93,17 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         response_format=RouterOutput
     )
     
-    print("[DEBUG] Router Decision obtained.")
-    print(f"[DEBUG] Route: {response.route}")
-    print(f"[DEBUG] Reasoning: {response.reasoning}")
+    print("[DEBUG ROUTER] Router Decision obtained.")
+    print(f"[DEBUG ROUTER] Route: {response.route}")
+    print(f"[DEBUG ROUTER] Reasoning: {response.reasoning}")
 
     route_decision: RouterDecision = {
         "route": response.route,
         "reasoning": response.reasoning
     }
 
-    print(f"✅ Router Decision: {response.route}")
-    print(f"   Reasoning: {response.reasoning}")
+    # print(f"✅ Router Decision: {response.route}")
+    # print(f"   Reasoning: {response.reasoning}")
 
     return {
         "route_decision": route_decision

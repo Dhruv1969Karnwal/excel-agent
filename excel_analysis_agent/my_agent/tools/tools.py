@@ -83,6 +83,7 @@ async def python_repl_tool(code: str) -> Dict[str, Any]:
         >>> await python_repl_tool("import pandas as pd\\ndf = pd.DataFrame({'a': [1, 2, 3]})")
         {'success': True, 'output': '', 'error': None, 'plots': [], 'tables': []}
     """
+    print(f"[Python REPL DEBUG inside tools.py] Executing code: {code}")
     return await execute_code_via_server(code)
 
 

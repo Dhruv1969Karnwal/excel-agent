@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from my_agent.agent import graph
 
 # Enable logging for LangGraph internals
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 async def main():
     # Generate and print Mermaid diagram for static visualization

@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from my_agent.models.state import ExcelAnalysisState
 from my_agent.prompts.prompts import FOLLOWUP_ANSWER_SYS_PROMPT, FOLLOWUP_ANSWER_USER_PROMPT
-
+from pprint import pprint
 
 async def followup_answer_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     """
@@ -24,7 +24,7 @@ async def followup_answer_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with messages update
     """
-    print("💡 Follow-up Answer: Answering from existing context...")
+    print("Follow-up Answer: Answering from existing context...")
 
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
@@ -51,20 +51,26 @@ async def followup_answer_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             previous_analysis=previous_analysis
         )
     )
-
+    print("[Follow-up Answer DEBUG inside followup_answer_node] System prompt is ")
+    pprint(system_prompt, indent=2)
+    print("[Follow-up Answer DEBUG inside followup_answer_node] User prompt is ")
+    pprint(user_prompt, indent=2)
     # Get response
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
         temperature=0
     )
-
-    print(f"✅ Follow-up Answer: Response generated")
+    print("[Follow-up Answer DEBUG inside followup_answer_node] Response is ")
+    pprint(response, indent=2)
+    # print(f"✅ Follow-up Answer: Response generated")
 
     # Create AI message
     answer_message = AIMessage(
         content=response.content,
         name="FollowupAssistant"
     )
+    print("[Follow-up Answer DEBUG inside followup_answer_node] Answer message is ")
+    pprint(answer_message, indent=2)
 
     return {
         "messages": [answer_message]

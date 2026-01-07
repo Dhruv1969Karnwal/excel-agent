@@ -24,7 +24,7 @@ async def chat_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with messages update
     """
-    print("💬 Chat: Handling general query...")
+    print("Chat: Handling general query...")
 
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
@@ -39,19 +39,26 @@ async def chat_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         content=CHAT_USER_PROMPT.format(user_query=user_query)
     )
 
+    print(f"[CHAT DEBUG] SYSTEM PROMPT: {system_prompt.content}")
+    print(f"[CHAT DEBUG] USER PROMPT: {user_prompt.content}")
+
     # Get response
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
         temperature=0.7
     )
 
-    print(f"✅ Chat: Response generated")
+
+
+    # print(f"✅ Chat: Response generated")
 
     # Create AI message
     chat_message = AIMessage(
         content=response.content,
         name="ChatAssistant"
     )
+
+    print(f"[CHAT DEBUG] RESPONSE: {response.content}")
 
     return {
         "messages": [chat_message]

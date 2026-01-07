@@ -1,0 +1,115 @@
+============================================================
+PROJECT PORTFOLIO NOTES
+============================================================
+
+------------------------------------------------------------
+Project ID   : P-001
+Project Name : Employee Salary Analysis
+Description  : Analyze employee salary data and identify top-paid employees
+Deadline     : Friday
+Priority     : High
+Status       : In Progress
+
+Team Name    : Analysis Group
+Team Members :
+- Dhruv
+- Aman
+- Neha
+
+Tasks:
+1. Task ID   : T-001
+   Task Name : Data Cleaning
+   Owner     : Aman
+   Status    : Completed
+
+2. Task ID   : T-002
+   Task Name : Salary Filtering & Ranking
+   Owner     : Dhruv
+   Status    : In Progress
+
+3. Task ID   : T-003
+   Task Name : Final Report Generation
+   Owner     : Neha
+   Status    : Pending
+
+Risks:
+- Tight deadline
+- Data inconsistency risk
+
+Notes:
+- Ensure salary values are normalized
+- Validate country field before filtering
+
+------------------------------------------------------------
+Project ID   : P-002
+Project Name : Sales Performance Dashboard
+Description  : Build an interactive dashboard for sales KPIs
+Deadline     : Next Monday
+Priority     : Medium
+Status       : Planned
+
+Team Name    : BI Team
+Team Members :
+- Riya
+- Karan
+
+Tasks:
+1. Task ID   : T-004
+   Task Name : Requirement Gathering
+   Owner     : Riya
+   Status    : Pending
+
+2. Task ID   : T-005
+   Task Name : Dashboard Design
+   Owner     : Karan
+   Status    : Pending
+
+Risks:
+- Dependency on data availability
+- Stakeholder feedback delays
+
+Notes:
+- Focus on quarterly metrics
+- Use consistent color themes
+
+------------------------------------------------------------
+Project ID   : P-003
+Project Name : Customer Churn Prediction
+Description  : Predict customer churn using historical data
+Deadline     : End of Month
+Priority     : High
+Status       : In Progress
+
+Team Name    : Data Science Team
+Team Members :
+- Ankit
+- Priya
+- Sohail
+
+Tasks:
+1. Task ID   : T-006
+   Task Name : Feature Engineering
+   Owner     : Priya
+   Status    : In Progress
+
+2. Task ID   : T-007
+   Task Name : Model Training
+   Owner     : Ankit
+   Status    : Pending
+
+3. Task ID   : T-008
+   Task Name : Model Evaluation
+   Owner     : Sohail
+   Status    : Pending
+
+Risks:
+- Model overfitting
+- Data imbalance
+
+Notes:
+- Apply cross-validation
+- Track precision and recall metrics
+
+============================================================
+END OF FILE
+============================================================

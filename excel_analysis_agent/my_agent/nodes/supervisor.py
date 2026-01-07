@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from my_agent.models.state import ExcelAnalysisState, SupervisorDecision
 from my_agent.prompts.prompts import SUPERVISOR_SYS_PROMPT, SUPERVISOR_USER_PROMPT
-
+from pprint import pprint
 
 async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     """
@@ -25,7 +25,7 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with supervisor_decision and user_query updates
     """
-    print("🎯 Supervisor: Evaluating if new analysis is needed...")
+    print("Supervisor: Evaluating if new analysis is needed...")
 
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
@@ -62,6 +62,10 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             description="Explanation for this decision"
         )
 
+    print("[Supervisor DEBUG inside supervisor_node] System prompt is ")
+    pprint(system_prompt, indent=2)
+    print("[Supervisor DEBUG inside supervisor_node] User prompt is ")
+    pprint(user_prompt, indent=2)
     # Get structured output
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
@@ -69,19 +73,19 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         response_format=SupervisorOutput
     )
     
-    print("[DEBUG] Supervisor Decision obtained.")
-    print(f"[DEBUG] Needs Analysis: {response.needs_analysis}")
-    print(f"[DEBUG] Reasoning: {response.reasoning}")
+    print("[Supervisor DEBUG inside supervisor_node] Supervisor Decision obtained.")
+    print(f"[Supervisor DEBUG inside supervisor_node] Needs Analysis: {response.needs_analysis}")
+    print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
 
     supervisor_decision: SupervisorDecision = {
         "needs_analysis": response.needs_analysis,
         "reasoning": response.reasoning
     }
 
-    print(f"✅ Supervisor Decision: {'New analysis needed' if response.needs_analysis else 'Answer from context'}")
-    print(f"   Reasoning: {response.reasoning}")
+    print(f"[Supervisor DEBUG inside supervisor_node] Supervisor Decision: {'New analysis needed' if response.needs_analysis else 'Answer from context'}")
+    print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
 
     return {
         "supervisor_decision": supervisor_decision,
-        "user_query": str(user_query)  # Pass user query for downstream nodes
+        "user_query": str(user_query)
     }
