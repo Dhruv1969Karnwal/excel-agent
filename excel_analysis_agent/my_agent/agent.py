@@ -56,29 +56,42 @@ def route_after_router(state: UnifiedAnalysisState) -> str:
     # Route 3: New analysis request -> check if data inspection needed
     elif route == "analysis":
         data_context = state.get("data_context")
-        # Support both new file_path and legacy excel_file_path
+        # Support both new file_path and legacy excel_file_path, and now kbid
         file_path = state.get("file_path") or state.get("excel_file_path")
+        kbid = state.get("kbid")
 
         # No context exists -> need inspection
         if not data_context:
             print("🔍 No data context found, routing to asset_dispatcher")
             return "asset_dispatcher"
 
-        # No file path provided -> need inspection
-        if not file_path:
-            print("⚠️ No file_path provided, routing to asset_dispatcher")
+        # Case 1: KBID provided (RAG)
+        if kbid and not file_path:
+            stored_kbid = data_context.get("kbid")
+            if stored_kbid != kbid:
+                print("📡 KBID changed, routing to asset_dispatcher")
+                return "asset_dispatcher"
+            print("✅ Data context exists for KBID, routing to supervisor")
+            return "supervisor"
+
+        # Case 2: File path provided (Classic)
+        # No file path or kbid provided -> need inspection
+        if not file_path and not kbid:
+            print("⚠️ No file_path or kbid provided, routing to asset_dispatcher")
             return "asset_dispatcher"
 
-        # Check if file path matches (use os.path.abspath to avoid blocking resolve())
-        stored_path = data_context.get("file_path", "")
-        current_path = os.path.abspath(file_path)
+        # Check if file path matches
+        if file_path:
+            stored_path = data_context.get("file_path", "")
+            current_path = os.path.abspath(file_path)
 
-        if stored_path != current_path:
-            print("📝 File path changed, routing to asset_dispatcher")
-            return "asset_dispatcher"
+            if stored_path != current_path:
+                print("📝 File path changed, routing to asset_dispatcher")
+                return "asset_dispatcher"
 
-        print("✅ Data context exists and file matches, routing to supervisor")
+        print("✅ Data context exists and matches, routing to supervisor")
         return "supervisor"
+
 
     # Default fallback
     return "chat"

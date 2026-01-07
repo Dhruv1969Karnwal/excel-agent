@@ -158,7 +158,28 @@ class PipelineRegistry:
         contexts = [p.get_router_context() for p in unique_pipelines]
         return "\n---\n".join(contexts)
     
+    def get_pipeline_by_name(self, name: str) -> AssetPipeline:
+        """
+        Get the pipeline by its name.
+        
+        Args:
+            name: Pipeline name (e.g., 'Excel', 'Document')
+            
+        Returns:
+            The registered pipeline for this name
+            
+        Raises:
+            ValueError: If no pipeline is registered with this name
+        """
+        name_lower = name.lower()
+        for p in set(self._pipelines.values()):
+            if p.name.lower() == name_lower:
+                return p
+        
+        raise ValueError(f"No pipeline registered with name: {name}")
+
     def clear(self) -> None:
+
         """Clear all registered pipelines (useful for testing)."""
         self._pipelines.clear()
         print("🗑️ Cleared all registered pipelines")

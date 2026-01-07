@@ -10,7 +10,8 @@ from my_agent.models.state import AnalysisStep, CodingSubgraphState
 from my_agent.pipelines.registry import registry
 # Fallback prompts for backward compatibility
 from my_agent.prompts.prompts import CODING_AGENT_SYS_PROMPT, CODING_AGENT_USER_PROMPT
-from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool
+from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool, document_search_tool
+
 import json
 from pprint import pprint
 
@@ -75,11 +76,16 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
     # Initialize LLM with tool calling
     from my_agent.core.llm_client import litellm_completion
-    from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool
+    from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool, document_search_tool
+
+    tools = [python_repl_tool, think_tool, bash_tool, document_search_tool]
+
 
     # Get file path (support both new and legacy fields)
     file_path = state.get("file_path") or state.get("excel_file_path", "")
     asset_type = state.get("asset_type", "excel")
+    kbid = state.get("kbid")
+
     
     # Get pipeline-specific prompts based on asset type
     try:
@@ -92,6 +98,15 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
             coding_sys_prompt = CODING_AGENT_SYS_PROMPT
             coding_user_prompt_template = CODING_AGENT_USER_PROMPT
             print("[Coding Agent DEBUG inside coding_agent_node] Using default prompts for coding")
+        
+        # Override prompts if this is a RAG-based document (detected by kbid presence)
+        if asset_type == "document" and kbid and not file_path:
+            # Re-fetch document pipeline to be sure
+            pipeline = registry.get_pipeline_by_name("Document")
+            coding_sys_prompt = pipeline.get_coding_system_prompt()
+            coding_user_prompt_template = pipeline.get_coding_user_prompt()
+            print(f"[Coding Agent DEBUG inside coding_agent_node] Forcing RAG Document prompts for KBID: {kbid}")
+
     except Exception as e:
         print(f"[Coding Agent DEBUG inside coding_agent_node] Could not get pipeline prompts: {e}, using defaults")
         coding_sys_prompt = CODING_AGENT_SYS_PROMPT
@@ -122,9 +137,11 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
             "data_context": data_context_str,
             "file_path": file_path,
             "plots_dir": str(PLOTS_DIR),
+            "kbid": kbid or "N/A",
             # Backward compatibility for Excel-specific template
             "excel_file_path": file_path,
         }
+
         
         # Add optional format args for documents/pptx
         if full_text:
@@ -144,7 +161,9 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
                 file_path=file_path,
                 excel_file_path=file_path,
                 plots_dir=str(PLOTS_DIR),
+                kbid=kbid or "N/A",
             )
+
         
         analysis_prompt = HumanMessage(content=analysis_content)
         messages = [system_prompt, user_query_msg, analysis_prompt]
@@ -159,9 +178,10 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
     # Invoke the LLM
     response = await litellm_completion(
         messages=messages,
-        tools=[python_repl_tool, bash_tool, think_tool],
+        tools=tools,
         temperature=0
     )
+
 
     print("[Coding Agent DEBUG inside coding_agent_node] Response:")
     pprint(response, indent=2)
@@ -260,7 +280,21 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
             tool_messages.append(tool_message)
             print("[Coding Agent DEBUG inside tool_execution_node] Reflection recorded")
 
+        elif tool_name == "document_search_tool":
+            # Execute document_search_tool (RAG)
+            result = await document_search_tool.ainvoke(tool_args)
+
+            # Create a tool message with the result
+            tool_message = ToolMessage(
+                content=str(result),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+            )
+            tool_messages.append(tool_message)
+            print(f"[Coding Agent DEBUG inside tool_execution_node] Document search complete for: {tool_args.get('query')}")
+
     print("[Coding Agent DEBUG inside tool_execution_node] Tool execution completed successfully ")
+
     pprint(tool_messages, indent=2)
     return {"messages": tool_messages}
 

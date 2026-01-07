@@ -1,8 +1,9 @@
-"""Python REPL tool for code execution in the Excel Analysis Agent."""
-
-from typing import Any, Dict
+import httpx
+import json
+from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
+
 
 from my_agent.helpers.sandbox_client import (
     execute_code_via_server,
@@ -133,3 +134,61 @@ async def bash_tool(command: str) -> Dict[str, Any]:
             "output": "",
             "error": "Only 'pip install' commands are supported in the sandbox. Example: pip install statsmodels"
         }
+
+# Configuration for remote search
+SEARCH_URL = "https://backend.v3.codemateai.dev/knowledge/search"
+SSL_CONTEXT = True  # Use standard SSL verification
+
+@tool
+async def document_search_tool(query: str, kbid: str) -> str:
+    """
+    Perform a remote vector search on a document knowledge base to find relevant information.
+    
+    Use this tool when you need to find specific information within documents that are not
+    fully loaded into the context. It returns the most relevant snippets from the document.
+    
+    Args:
+        query: The search query or question to find in the document
+        kbid: The Knowledge Base ID to search within
+        
+    Returns:
+        A string containing the relevant document snippets and metadata.
+    """
+    try:
+        data = {"collection_id": kbid, "search_queries": query}
+        # Use the session ID provided by the user
+        headers = {"X-Session": "e04230cd-0ed7-41d0-a70a-d699b3b4957c"}
+        
+        async with httpx.AsyncClient(verify=SSL_CONTEXT) as client:
+            response = await client.post(
+                SEARCH_URL,
+                json=data,
+                headers=headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            results = response.json()
+            
+            if not results:
+                return "No relevant information found in the document."
+                
+            formatted_results = []
+            for i, res in enumerate(results):
+                payload = res.get("payload", {})
+                content = payload.get("content", "")
+                if isinstance(content, dict):
+                    content = content.get("text", "")
+                
+                file_info = f"Source: {payload.get('file', 'Unknown')}"
+                lines = payload.get("lines", [])
+                if lines:
+                    file_info += f" (Lines {lines[0]}-{lines[1]})"
+                
+                formatted_results.append(f"Result {i+1}:\n{file_info}\nContent: {content}\n")
+                
+            return "\n".join(formatted_results)
+            
+    except Exception as e:
+        print(f"Error in document_search_tool: {e}")
+        return f"Error performing document search: {str(e)}"
+

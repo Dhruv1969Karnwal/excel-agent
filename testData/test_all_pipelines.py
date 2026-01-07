@@ -72,22 +72,31 @@ def create_sample_files():
     else:
         print(f"✅ Found {pptx_file}")
 
-async def run_test(name, file_path, query):
+async def run_test(name, file_path, query, kbid=None):
     print(f"\n{'='*60}")
     print(f"🚀 TESTING PIPELINE: {name}")
-    print(f"📂 File: {file_path}")
+    if file_path:
+        print(f"📂 File: {file_path}")
+    if kbid:
+        print(f"📡 KBID: {kbid}")
     print(f"🤖 Query: {query}")
     print(f"{'='*60}\n")
 
-    if not os.path.exists(file_path):
+    if file_path and not os.path.exists(file_path):
         print(f"❌ Error: File {file_path} not found. Skipping test.")
         return
 
     # In LangGraph, we use the unified state
     initial_state = {
         "messages": [HumanMessage(content=query)],
-        "file_path": os.path.abspath(file_path),
     }
+    
+    if file_path:
+        initial_state["file_path"] = os.path.abspath(file_path)
+    
+    if kbid:
+        initial_state["kbid"] = kbid
+
     print("Initial State:")
     pprint(initial_state, indent=2)
 
@@ -100,17 +109,19 @@ async def run_test(name, file_path, query):
             # final_state = event
             all_events.append(event)  # Store the full event (state snapshot)
             
-            # Existing partial print logic (optional, for real-time feedback)
             # if "messages" in event and event["messages"]:
-                # last_msg = event["messages"][-1]
-                # if last_msg.name == "CodingAgent":
-                    # print(f"📝 Agent Response (partial): {last_msg.content[:100]}...")
+            #     last_msg = event["messages"][-1]
+            #     if last_msg.name == "CodingAgent":
+            #          print(f"📝 Agent Response (partial): {last_msg.content[:100]}...")
+            #     elif last_msg.name == "AssetDispatcher":
+            #          print(f"📂 Asset Dispatcher: {last_msg.content}")
         
         # After streaming, save all events to JSON
         events_filename = f"events_{name.replace(' ', '_')}.json"
         with open(events_filename, "w") as f:
             json.dump(all_events, f, indent=2, default=str)  # Use default=str to handle non-serializable objects like HumanMessage
         print(f"✅ All events saved to {events_filename}")
+
         
         # print(f"\n✅ {name} Test Complete!")
         # if final_state and "final_analysis" in final_state:
@@ -145,10 +156,18 @@ async def main():
     # )
 
     # Document Test (Text)
+    # await run_test(
+    #     "Document Pipeline (Text)", 
+    #     "notes.txt", 
+    #     "List down all project id and also count of tasks in each project"
+    # )
+
+    # Document RAG Test (Cloud)
     await run_test(
-        "Document Pipeline (Text)", 
-        "notes.txt", 
-        "List down all project id and also count of tasks in each project"
+        "Document RAG Pipeline",
+        None,
+        "find info about all files  in the knowledge base",
+        kbid="700dcaf6-d73c-40ca-be0b-36f76f27a3b1"
     )
 
     # PowerPoint Test
@@ -160,3 +179,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

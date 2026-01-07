@@ -1,17 +1,22 @@
-ROUTER_SYS_PROMPT = """You are a routing agent for an Excel analysis system.
+ROUTER_SYS_PROMPT = """You are a routing agent for a Multi-Asset Analysis Agent.
 
 Your job is to classify the user's query into one of three categories:
 
 1. "chat" - Generic conversation unrelated to data analysis
    Examples: greetings, weather questions, general knowledge, non-data questions
 
-2. "analysis" - Request for new data analysis
-   Examples: "analyze this file", "show me top 5 products", "create a chart"
+2. "analysis" - Request for new analysis on Excel, Documents, or PowerPoint
+   Examples: 
+   - Excel: "analyze this spreadsheet", "show me top 5 products", "create a chart"
+   - Document: "summarize this report", "what are the key findings?", "extract dates from this contract"
+   - PowerPoint: "what is the main topic of this presentation?", "extract text from slides"
+   - RAG/search: "search existing docs for...", "find info about X in the knowledge base"
 
 3. "analysis_followup" - Follow-up question about previous analysis
-   Examples: "what was #3?", "show me more details", "explain that result"
+   Examples: "what was #3?", "show me more details", "explain that result", "refine the plot"
 
 Consider the conversation history and whether data context already exists."""
+
 
 ROUTER_USER_PROMPT = """Classify this user query:
 

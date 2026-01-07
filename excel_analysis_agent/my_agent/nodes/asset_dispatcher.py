@@ -32,19 +32,54 @@ async def asset_dispatcher_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     """
     # Support both new file_path and legacy excel_file_path
     file_path = state.get("file_path") or state.get("excel_file_path")
+    kbid = state.get("kbid")
     existing_context = state.get("data_context")
     
-    if not file_path:
+    # CASE 1: Neither file_path nor kbid provided
+    if not file_path and not kbid:
         return {
-            "data_context": {"error": "No file path provided"},
+            "data_context": {"error": "No file path or Knowledge Base ID (kbid) provided"},
             "messages": [AIMessage(
-                content="Please provide a file path to analyze. I support Excel (.xlsx, .xls, .csv), "
-                        "Documents (.docx, .pdf, .txt, .md), and PowerPoint (.pptx) files.",
+                content="Please provide a file path or Knowledge Base ID to analyze. I support Excel (.xlsx, .xls, .csv), "
+                        "Documents (.docx, .pdf, .txt, .md, or RAG via kbid), and PowerPoint (.pptx) files.",
                 name="AssetDispatcher"
             )]
         }
     
+    # CASE 2: Knowledge Base ID (kbid) provided (Document RAG Pipeline)
+    if kbid and not file_path:
+        try:
+            # Get Document pipeline directly by name
+            pipeline = registry.get_pipeline_by_name("Document")
+            asset_type = "document"
+            
+            print(f"📡 Dispatching to {pipeline.name} pipeline for RAG (KBID: {kbid})")
+            
+            # Inspect using kbid (this will need update in DocumentPipeline.inspect)
+            # We pass kbid instead of file_path to the inspector
+            data_context = await pipeline.inspect(kbid)
+            
+            return {
+                "asset_type": asset_type,
+                "data_context": data_context,
+                "kbid": kbid,
+                "messages": [AIMessage(
+                    content=f"Knowledge Base initialization complete. Detected asset type: {pipeline.name}. "
+                            f"KBID: {kbid}",
+                    name="AssetDispatcher"
+                )]
+            }
+        except Exception as e:
+            error_msg = f"Error initializing KBID: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {
+                "data_context": {"error": error_msg},
+                "messages": [AIMessage(content=error_msg, name="AssetDispatcher")]
+            }
+
+    # CASE 3: File path provided (Classic local file analysis)
     # Resolve absolute path
+
     abs_file_path = os.path.abspath(file_path)
     
     # Check if we already have context for this exact file (context caching)

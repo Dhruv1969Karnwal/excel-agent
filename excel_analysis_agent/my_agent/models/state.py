@@ -141,6 +141,7 @@ class UnifiedAnalysisState(MessagesState):
     # New unified fields
     file_path: Optional[str]  # Generic file path for any asset type
     asset_type: Optional[str]  # 'excel', 'document', 'powerpoint', etc.
+    kbid: Optional[str]  # Knowledge Base ID for RAG-based analysis
     
     # Backward compatibility - will be synced with file_path for Excel files
     excel_file_path: Optional[str]  # DEPRECATED - use file_path
@@ -179,6 +180,7 @@ class CodingSubgraphInput(TypedDict, total=False):
     """
     file_path: str  # Generic file path for any asset type
     asset_type: str  # 'excel', 'document', 'powerpoint'
+    kbid: str  # Knowledge Base ID for RAG-based analysis
     excel_file_path: str  # DEPRECATED - use file_path
     data_context: Dict[str, Any]  # Structured dict
     analysis_plan: str
@@ -232,6 +234,7 @@ class CodingSubgraphState(TypedDict, total=False):
     messages: Annotated[List[BaseMessage], add_messages]
     file_path: str  # Generic file path for any asset type
     asset_type: str  # 'excel', 'document', 'powerpoint'
+    kbid: str  # Knowledge Base ID for RAG-based analysis
     excel_file_path: str  # DEPRECATED - use file_path
     data_context: Dict[str, Any]  # Structured dict
     analysis_plan: str
