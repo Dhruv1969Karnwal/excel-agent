@@ -1,0 +1,20 @@
+{
+  "query": "List down all end points in this and employee gender ratio bar chart",
+  "attachments": [
+    {
+  "type": "codebase",
+  "name": "IAM Server",
+ "kbid": "700dcaf6-d73c-40ca-be0b-36f76f27a3b1"
+    },
+    {
+      "type": "excel",
+      "path": "C:\\Users\\Dhruv\\Desktop\\CodeMate.AI\\crafting-ai-agents\\testData\\esd.xlsx",
+      "name": "Employee Data"
+    }
+  ],
+  
+  "history": [
+    {"role": "user", "content": "Hi there!"},
+    {"role": "assistant", "content": "Hello! How can I help you analyze data today?"}
+  ]
+}

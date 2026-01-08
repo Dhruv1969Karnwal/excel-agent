@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from my_agent.agent import graph
 from my_agent.helpers.dynamic_registration import process_incoming_request
-
+from pprint import pprint
 app = FastAPI(
     title="Multi-Asset Analysis Agent API",
     description="API for analyzing Excel, Documents, and PowerPoint files.",
@@ -31,17 +31,20 @@ async def chat_endpoint(request: ChatRequest):
         
         # Run the agent graph
         final_state = await graph.ainvoke(initial_state)
+
+        print(f"[DEBUG] Final state is ")
+        pprint(final_state, indent=2)
         
         # Extract relevant info from final state
         response = {
-            "analysis": final_state.get("final_analysis", ""),
+            "final_analysis": final_state.get("final_analysis", ""),
             "artifacts": final_state.get("artifacts", []),
-            "route": final_state.get("route_decision", {}).get("route", "chat"),
-            "asset_type": final_state.get("asset_type", "excel")
+            # "route": final_state.get("route_decision", {}).get("route", "chat"),
+            "asset_types": final_state.get("asset_type", [])
         }
         
         # Optionally include the full message history
-        # response["messages"] = [str(m) for m in final_state.get("messages", [])]
+        response["messages"] = [str(m) for m in final_state.get("messages", [])]
         
         return response
         

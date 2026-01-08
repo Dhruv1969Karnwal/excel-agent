@@ -110,44 +110,32 @@ async def asset_dispatcher_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     # Determine "primary" asset for prompts/UI hints (Legacy fallback)
     # We still calculate this for the 'asset_type' field used by the UI, 
     # but we DO NOT let it overwrite the detailed data_contexts.
-    primary_asset_id = None
-    asset_type = "excel" # default fallback
-    
-    # Check for Codebase assets
-    codebase_assets = []
-    for aid, ctx in data_contexts.items():
-        if ctx.get("document_type") == "Codebase/Collection (RAG)":
-            codebase_assets.append(aid)
-            
-    # Check for Excel assets
-    excel_assets = []
-    for aid, ctx in data_contexts.items():
-        if "." in str(aid) and "excel" in str(ctx.get("description", "")).lower():
-             excel_assets.append(aid)
-
-    if codebase_assets:
-        primary_asset_id = codebase_assets[0]
-        asset_type = "codebase"
-    elif excel_assets:
-        primary_asset_id = excel_assets[0]
-        asset_type = "excel"
-    elif data_contexts:
-        primary_asset_id = list(data_contexts.keys())[0]
-        # Peek at context the type
-        target_ctx = data_contexts[primary_asset_id]
-        if "excel" in target_ctx.get("description", "").lower():
-            asset_type = "excel"
-        elif "powerpoint" in target_ctx.get("description", "").lower():
-            asset_type = "powerpoint"
-        elif "codebase" in target_ctx.get("description", "").lower():
-            asset_type = "codebase"
+    # Determine all identified asset types
+    identified_types = set()
+    for ctx in data_contexts.values():
+        dtype = ctx.get("document_type", "").lower()
+        if "excel" in dtype or "csv" in dtype:
+            identified_types.add("excel")
+        elif "codebase" in dtype:
+            identified_types.add("codebase")
+        elif "powerpoint" in dtype:
+            identified_types.add("powerpoint")
         else:
-            asset_type = "document"
+            identified_types.add("document")
+
+    # Set asset_type response field
+    sorted_types = sorted(list(identified_types))
+    if len(sorted_types) > 1:
+        asset_type = "mixed"
+    elif sorted_types:
+        asset_type = sorted_types[0]
+    else:
+        asset_type = "document"
 
     result = {
         "data_contexts": data_contexts,
         "messages": new_messages,
-        "asset_type": asset_type
+        "asset_types": sorted_types, # New array of types
     }
-    
+
     return result

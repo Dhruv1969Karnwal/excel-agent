@@ -422,7 +422,7 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
     # Collect all artifacts from tool executions
     internal_messages = state["messages"]
-    print("[Coding Agent DEBUG inside finalize_analysis_node] Processing {len(internal_messages)} internal messages for artifacts and messages is ")
+    print(f"[Coding Agent DEBUG inside finalize_analysis_node] Processing {len(internal_messages)} internal messages for artifacts and messages is ")
     pprint(internal_messages, indent=2)
     artifacts = []
     tool_messages = [

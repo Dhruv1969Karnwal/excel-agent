@@ -102,12 +102,26 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
         print(f"📝 Created new session: {session_id}")
 
     execution_context = SESSION_CONTEXTS[session_id]
+
+    # Hardcoded UUID for asset storage
+    request_uuid = "e2695b8c-e31d-4b78-bf1f-714fd9fa3e51"
     
-    # Ensure critical variables are always present in the context
-    if "plots_dir" not in execution_context:
-        execution_context["plots_dir"] = str(PLOTS_DIR)
-    if "tables_dir" not in execution_context:
-        execution_context["tables_dir"] = str(TABLES_DIR)
+    # Create request-specific subdirectories
+    session_plots_dir = PLOTS_DIR / request_uuid
+    session_tables_dir = TABLES_DIR / request_uuid
+    
+    session_plots_dir.mkdir(parents=True, exist_ok=True)
+    session_tables_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"📁 Initialized storage for UUID: {request_uuid}")
+    print(f"   ∟ Plots: {session_plots_dir}")
+    print(f"   ∟ Tables: {session_tables_dir}")
+
+    # Set directories in the execution context
+    execution_context["plots_dir"] = str(session_plots_dir)
+    execution_context["tables_dir"] = str(session_tables_dir)
+    
+    print(f"🚀 Executing code in sandbox for session: {session_id}")
 
     # Force matplotlib to use non-GUI backend
     try:
@@ -129,19 +143,21 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
         # Capture output
         output = redirected_output.getvalue()
 
-        # Get initial list of plots to detect new ones
-        initial_plots = set(p.name for p in PLOTS_DIR.glob("*"))
+        # Get initial list of plots to detect new ones in the session-specific directory
+        initial_plots = set(p.name for p in session_plots_dir.glob("*"))
 
         # Wrap exec in asyncio.to_thread to avoid blocking the event loop
         await asyncio.to_thread(
             exec, code, {"__builtins__": __builtins__}, execution_context
         )
 
-        # Detect new plots
-        current_plots = set(p.name for p in PLOTS_DIR.glob("*"))
+        # Detect new plots in the session-specific directory
+        current_plots = set(p.name for p in session_plots_dir.glob("*"))
         new_plots = current_plots - initial_plots
         for plot_name in new_plots:
-            plots_saved.append(str(PLOTS_DIR / plot_name))
+            plot_path = session_plots_dir / plot_name
+            plots_saved.append(str(plot_path))
+            print(f"📊 Plot saved: {plot_path}")
 
         # Auto-detect and format pandas DataFrames
         try:
@@ -158,6 +174,7 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
                                 "shape": var_value.shape,
                             }
                         )
+                        print(f"📋 Detected DataFrame '{var_name}' (Shape: {var_value.shape})")
         except ImportError:
             pass
         except Exception as e:
