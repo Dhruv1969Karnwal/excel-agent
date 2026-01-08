@@ -111,6 +111,8 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
             header = "You are a Multi-Asset Analysis Agent. You must combine the capabilities of the following specialists:"
             planning_sys_prompt = f"{header}\n\n" + "\n\n".join(sys_prompts)
             planning_sys_prompt += "\n\nIMPORTANT: You must cross-reference information between these assets. Plan steps that involve switching contexts (e.g., read Excel -> search Codebase)."
+            planning_sys_prompt += "\n\nCRITICAL: For each step, you MUST assign the single most relevant agent/pipeline (e.g., 'Excel', 'Codebase', 'Document')."
+            planning_sys_prompt += "\nFormat your steps as a JSON list with keys: 'order', 'description', 'assigned_agent'."
 
             # 3. Use Generic User Prompt (to avoid conflict/duplication)
             # We import this just for the structure "{user_query} ... {data_context}"
@@ -177,6 +179,7 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
                     "description": step_data.get("description", ""),
                     "status": "pending",
                     "order": step_data.get("order", 0),
+                    "assigned_agent": step_data.get("assigned_agent", "General"),
                     "result_summary": ""
                 })
             except json.JSONDecodeError:
@@ -196,5 +199,6 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     print("[Planning DEBUG inside planning_node] Structured steps are ", structured_steps)
     return {
         "analysis_plan": analysis_plan_text,
-        "analysis_steps": structured_steps
+        "analysis_steps": structured_steps,
+        "active_step_index": 0
     }

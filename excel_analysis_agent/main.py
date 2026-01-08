@@ -30,21 +30,23 @@ async def chat_endpoint(request: ChatRequest):
         initial_state = process_incoming_request(request.model_dump())
         
         # Run the agent graph
-        final_state = await graph.ainvoke(initial_state)
+        config = {"recursion_limit": 100}
+        final_state = await graph.ainvoke(initial_state, config=config)
 
         print(f"[DEBUG] Final state is ")
         pprint(final_state, indent=2)
         
         # Extract relevant info from final state
         response = {
-            "final_analysis": final_state.get("final_analysis", ""),
-            "artifacts": final_state.get("artifacts", []),
-            # "route": final_state.get("route_decision", {}).get("route", "chat"),
-            "asset_types": final_state.get("asset_type", [])
+            # "final_analysis": final_state.get("final_analysis", ""),
+            # "artifacts": final_state.get("artifacts", []),
+            # # "route": final_state.get("route_decision", {}).get("route", "chat"),
+            # "asset_types": final_state.get("asset_type", [])
+            "final_state": final_state
         }
         
         # Optionally include the full message history
-        response["messages"] = [str(m) for m in final_state.get("messages", [])]
+        # response["messages"] = [str(m) for m in final_state.get("messages", [])]
         
         return response
         

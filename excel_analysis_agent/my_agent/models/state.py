@@ -110,6 +110,7 @@ class AnalysisStep(TypedDict, total=False):
     description: str
     status: str
     order: int
+    assigned_agent: str
     result_summary: str
 
 
@@ -160,6 +161,7 @@ class UnifiedAnalysisState(MessagesState):
     final_analysis: Optional[str]
     artifacts: Annotated[List[Artifact], add_artifacts]
     analysis_steps: Annotated[List[AnalysisStep], update_analysis_steps]
+    active_step_index: int
 
 
 # Backward compatibility alias
@@ -192,6 +194,7 @@ class CodingSubgraphInput(TypedDict, total=False):
     analysis_plan: str
     user_query: str
     analysis_steps: List[AnalysisStep]
+    active_step_index: int
 
 
 class CodingSubgraphOutput(TypedDict, total=False):
@@ -251,3 +254,4 @@ class CodingSubgraphState(TypedDict, total=False):
     final_analysis: str
     artifacts: Annotated[List[Artifact], add_artifacts]
     analysis_steps: Annotated[List[AnalysisStep], update_analysis_steps]
+    active_step_index: int
