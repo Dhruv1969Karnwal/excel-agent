@@ -1,0 +1,13 @@
+{
+  "query": "List down all end points in this",
+  "attachments": [
+    {
+  "type": "codebase",
+  "name": "IAM Server",
+ "kbid": "700dcaf6-d73c-40ca-be0b-36f76f27a3b1"}
+  ],
+  "history": [
+    {"role": "user", "content": "Hi there!"},
+    {"role": "assistant", "content": "Hello! How can I help you analyze data today?"}
+  ]
+}

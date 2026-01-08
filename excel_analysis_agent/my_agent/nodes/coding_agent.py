@@ -11,6 +11,7 @@ from my_agent.pipelines.registry import registry
 # Fallback prompts for backward compatibility
 from my_agent.prompts.prompts import CODING_AGENT_SYS_PROMPT, CODING_AGENT_USER_PROMPT
 from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool, document_search_tool
+from pathlib import Path
 
 import json
 from pprint import pprint
@@ -87,28 +88,80 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
     kbid = state.get("kbid")
 
     
-    # Get pipeline-specific prompts based on asset type
-    try:
-        if file_path:
-            pipeline = registry.get_pipeline_for_file(file_path)
+    # Get data contexts (plural)
+    data_contexts = state.get("data_contexts") or {}
+    
+    # Prioritize Excel for coding prompts
+    primary_asset_id = None
+    excel_assets = [aid for aid in data_contexts if registry.is_supported(aid) and registry.get_pipeline_for_file(aid).name == "Excel"]
+    
+    if excel_assets:
+        primary_asset_id = excel_assets[0]
+    elif data_contexts:
+        primary_asset_id = list(data_contexts.keys())[0]
+    else:
+        primary_asset_id = state.get("file_path") or state.get("excel_file_path", "")
+
+    # Determine involved asset types from data contexts
+    asset_types = set()
+    for ctx in data_contexts.values():
+        dtype = ctx.get("document_type", "").lower()
+        if "excel" in dtype or "csv" in dtype:
+            asset_types.add("Excel")
+        elif "codebase" in dtype:
+            asset_types.add("Codebase")
+        elif "powerpoint" in dtype:
+            asset_types.add("PowerPoint")
+        else:
+            asset_types.add("Document")
+
+    # Select Pipeline Prompts
+    # Case 1: Single Asset Type -> Use that pipeline's specific prompts
+    if len(asset_types) == 1:
+        target_type = list(asset_types)[0]
+        try:
+            pipeline = registry.get_pipeline_by_name(target_type)
             coding_sys_prompt = pipeline.get_coding_system_prompt()
             coding_user_prompt_template = pipeline.get_coding_user_prompt()
-            print(f"[Coding Agent DEBUG inside coding_agent_node] Using {pipeline.name} pipeline prompts for coding")
-        else:
+            print(f"[Coding Agent] Using {pipeline.name} pipeline prompts for coding")
+        except Exception as e:
+            print(f"[Coding Agent] Could not get pipeline prompts for {target_type}: {e}, using defaults")
             coding_sys_prompt = CODING_AGENT_SYS_PROMPT
             coding_user_prompt_template = CODING_AGENT_USER_PROMPT
-            print("[Coding Agent DEBUG inside coding_agent_node] Using default prompts for coding")
-        
-        # Override prompts if this is a RAG-based document (detected by kbid presence)
-        if asset_type == "document" and kbid and not file_path:
-            # Re-fetch document pipeline to be sure
-            pipeline = registry.get_pipeline_by_name("Document")
-            coding_sys_prompt = pipeline.get_coding_system_prompt()
-            coding_user_prompt_template = pipeline.get_coding_user_prompt()
-            print(f"[Coding Agent DEBUG inside coding_agent_node] Forcing RAG Document prompts for KBID: {kbid}")
 
-    except Exception as e:
-        print(f"[Coding Agent DEBUG inside coding_agent_node] Could not get pipeline prompts: {e}, using defaults")
+    # Case 2: Mixed Asset Types -> Dynamically Merge Prompts
+    elif len(asset_types) > 1:
+        print(f"[Coding Agent] Mixed asset types detected {asset_types}. Merging prompts dynamically.")
+        
+        sys_instructions = []
+        for dtype in asset_types:
+            try:
+                pipeline = registry.get_pipeline_by_name(dtype)
+                # Extract core capabilities/instructions from the specialist prompt
+                sys_instructions.append(f"--- Instructions for {dtype} Operations ---\n{pipeline.get_coding_system_prompt()}")
+            except:
+                pass
+        
+        # Combine specialized instructions
+        header = "You are a Multi-Asset Coding Agent. You must combine the capabilities of the following specialists:"
+        coding_sys_prompt = f"{header}\n\n" + "\n\n".join(sys_instructions)
+        
+        # IMPORTANT: When mixed, ALWAYS append the strong Agentic Looping instructions 
+        # (usually found in the Excel/Global prompt) to ensure it doesn't stop early.
+        agentic_loop_instructions = """
+--- CRITICAL AGENTIC INSTRUCTIONS ---
+1. FOLLOW THE ANALYSIS PLAN: You MUST execute the provided plan step-by-step.
+2. DO NOT STOP EARLY: You are in an iterative loop. After each tool call, check if the ENTIRE plan is complete.
+3. LOOPING: If there are pending steps in the plan, continue with more tool calls in the NEXT iteration.
+4. THINKING: Use the `think_tool` after every significant tool result to evaluate progress against the plan.
+5. FINAL RESPONSE: Only provide the final analysis once ALL steps of the plan are successfully finished.
+"""
+        coding_sys_prompt += agentic_loop_instructions
+        coding_user_prompt_template = CODING_AGENT_USER_PROMPT
+    
+    # Case 3: Fallback (no assets or unknown)
+    else:
+        print("[Coding Agent] Using Global prompts for coding")
         coding_sys_prompt = CODING_AGENT_SYS_PROMPT
         coding_user_prompt_template = CODING_AGENT_USER_PROMPT
 
@@ -121,49 +174,47 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         user_query = state.get("user_query", "Analyze the data")
         user_query_msg = HumanMessage(content=f"User Request: {user_query}")
 
-        # Extract data context description from structured dict
-        data_context_dict = state.get("data_context")
-        data_context_str = ""
-        full_text = ""
-        slides = []
-        if data_context_dict:
-            data_context_str = data_context_dict.get("description", "")
-            full_text = data_context_dict.get("full_text", "")  # For documents/pptx
-            slides = data_context_dict.get("slides", [])  # For pptx
+        # Aggregate contexts for prompt
+        full_data_context_str = ""
+        context_parts = []
+        full_texts = []
+        slide_counts = []
+        
+        for aid, ctx in data_contexts.items():
+            desc = ctx.get("description", "")
+            context_parts.append(f"### Asset: {aid} ###\n{desc}")
+            if ctx.get("full_text"):
+                full_texts.append(f"### Full Text: {aid} ###\n{ctx['full_text']}")
+            if ctx.get("slides"):
+                slide_counts.append(f"{aid}: {len(ctx['slides'])} slides")
+        
+        full_data_context_str = "\n\n".join(context_parts)
+        combined_full_text = "\n\n".join(full_texts)
+        combined_slide_count_str = ", ".join(slide_counts)
         
         # Build format arguments based on what's available in the template
         format_args = {
             "analysis_plan": state.get("analysis_plan", ""),
-            "data_context": data_context_str,
-            "file_path": file_path,
+            "data_context": full_data_context_str,
+            "file_path": primary_asset_id or "N/A",
             "plots_dir": str(PLOTS_DIR),
             "kbid": kbid or "N/A",
-            # Backward compatibility for Excel-specific template
-            "excel_file_path": file_path,
+            "excel_file_path": primary_asset_id or "N/A",
+            "full_text": combined_full_text or "N/A",
+            "slide_count": combined_slide_count_str or "0",
         }
 
-        
-        # Add optional format args for documents/pptx
-        if full_text:
-            format_args["full_text"] = full_text
-        if slides:
-            format_args["slide_count"] = len(slides)
-        
         # Format the prompt with available arguments
         try:
+            # We use string template formatting but need to be careful with extra braces in prompts
+            # For simplicity, we'll try to match the expected keys
             analysis_content = coding_user_prompt_template.format(**format_args)
         except KeyError as e:
-            # Some templates might not have all placeholders, use default
-            print(f"[WARNING Coding Agent DEBUG inside coding_agent_node] Template missing key {e}, using simple format")
-            analysis_content = coding_user_prompt_template.format(
-                analysis_plan=state.get("analysis_plan", ""),
-                data_context=data_context_str,
-                file_path=file_path,
-                excel_file_path=file_path,
-                plots_dir=str(PLOTS_DIR),
-                kbid=kbid or "N/A",
-            )
-
+            print(f"[WARNING Coding Agent] Template missing key {e}, using partial format")
+            # Minimal required keys for most templates
+            analysis_content = coding_user_prompt_template.replace("{analysis_plan}", format_args["analysis_plan"])
+            analysis_content = analysis_content.replace("{data_context}", format_args["data_context"])
+            analysis_content = analysis_content.replace("{file_path}", format_args["file_path"])
         
         analysis_prompt = HumanMessage(content=analysis_content)
         messages = [system_prompt, user_query_msg, analysis_prompt]
@@ -504,7 +555,7 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
     for art in artifacts:
         print(f"  - [{art['type'].upper()}] {art['description']}")
 
-    from pathlib import Path
+    # Finalize message content
 
     # Ensure final_analysis_text is a string
     final_analysis_str = str(final_analysis_text) if final_analysis_text else "Analysis completed."

@@ -171,19 +171,6 @@ async def inspect_document(file_path: str) -> Dict[str, Any]:
     """
     ext = os.path.splitext(file_path)[1].lower()
     
-    # If no extension and length suggests it might be a KBID/UUID (RAG Mode)
-    if not ext and len(file_path) > 10:
-        kbid = file_path
-        print(f"📡 Initializing Document RAG context for KBID: {kbid}")
-        return {
-            "kbid": kbid,
-            "document_type": "Knowledge Base (RAG)",
-            "analyzed_at": datetime.now().isoformat(),
-            "description": f"Remote Knowledge Base (KBID: {kbid})\n- Mode: RAG (Retrieval-Augmented Generation)\n- Capabilities: document_search, summarization, QA",
-            "full_text": "[Managed via document_search_tool]",
-            "capabilities": ["document_search", "summarization", "question_answering"]
-        }
-
     file_name = Path(file_path).name
 
     

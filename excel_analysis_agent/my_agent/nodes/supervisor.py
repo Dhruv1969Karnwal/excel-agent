@@ -32,13 +32,20 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
 
     # Get the user's query
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
-    user_query = user_messages[-1].content if user_messages else "Analyze the data"
+    user_query = user_messages[-1].content if user_messages else "Analyze"
 
-    # Get data context
-    data_context_dict = state.get("data_context")
+    # Get data context (Multi-Asset Support)
+    data_contexts = state.get("data_contexts") or {}
+    
     data_context = ""
-    if data_context_dict:
-        data_context = data_context_dict.get("description", "No data description available")
+    if data_contexts:
+        context_parts = []
+        for asset_id, ctx in data_contexts.items():
+            desc = ctx.get("description", "No description")
+            context_parts.append(f"--- Asset: {asset_id} ---\n{desc}")
+        data_context = "\n\n".join(context_parts)
+    else:
+        data_context = "No data description available"
 
     # Get previous analysis
     previous_analysis = state.get("final_analysis", "No previous analysis exists")
@@ -63,9 +70,9 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         )
 
     print("[Supervisor DEBUG inside supervisor_node] System prompt is ")
-    pprint(system_prompt, indent=2)
+    pprint(system_prompt.content)
     print("[Supervisor DEBUG inside supervisor_node] User prompt is ")
-    pprint(user_prompt, indent=2)
+    pprint(user_prompt.content)
     # Get structured output
     response = await litellm_completion(
         messages=[system_prompt, user_prompt],
@@ -75,15 +82,15 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     
     print("[Supervisor DEBUG inside supervisor_node] Supervisor Decision obtained.")
     print(f"[Supervisor DEBUG inside supervisor_node] Needs Analysis: {response.needs_analysis}")
-    print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
+    # print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
 
     supervisor_decision: SupervisorDecision = {
         "needs_analysis": response.needs_analysis,
         "reasoning": response.reasoning
     }
 
-    print(f"[Supervisor DEBUG inside supervisor_node] Supervisor Decision: {'New analysis needed' if response.needs_analysis else 'Answer from context'}")
-    print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
+    # print(f"[Supervisor DEBUG inside supervisor_node] Supervisor Decision: {'New analysis needed' if response.needs_analysis else 'Answer from context'}")
+    # print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")
 
     return {
         "supervisor_decision": supervisor_decision,

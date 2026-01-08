@@ -27,7 +27,8 @@ class PipelineRegistry:
     """
     
     _instance: Optional["PipelineRegistry"] = None
-    _pipelines: Dict[str, AssetPipeline]
+    _pipelines: Dict[str, AssetPipeline]  # Extension -> Pipeline
+    _named_pipelines: Dict[str, AssetPipeline] # Name -> Pipeline
     _initialized: bool = False
     
     def __new__(cls) -> "PipelineRegistry":
@@ -35,20 +36,29 @@ class PipelineRegistry:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._pipelines = {}
+            cls._instance._named_pipelines = {}
             cls._instance._initialized = False
         return cls._instance
     
     def register(self, pipeline: AssetPipeline) -> None:
         """
-        Register a pipeline for its supported extensions.
+        Register a pipeline for its name and supported extensions.
         
         Args:
             pipeline: An instance of AssetPipeline
         """
+        # Always register by name
+        name_lower = pipeline.name.lower()
+        self._named_pipelines[name_lower] = pipeline
+        
+        # Register for each supported extension
         for ext in pipeline.supported_extensions:
             ext_lower = ext.lower().lstrip('.')
             self._pipelines[ext_lower] = pipeline
             print(f"✅ Registered {pipeline.name} pipeline for .{ext_lower}")
+        
+        if not pipeline.supported_extensions:
+            print(f"✅ Registered {pipeline.name} pipeline (extensionless)")
     
     def unregister(self, extension: str) -> None:
         """
@@ -117,8 +127,8 @@ class PipelineRegistry:
     
     @property
     def registered_pipelines(self) -> Dict[str, str]:
-        """Get a mapping of extension -> pipeline name."""
-        return {ext: p.name for ext, p in self._pipelines.items()}
+        """Get a mapping of all registered pipeline names."""
+        return {name: p.name for name, p in self._named_pipelines.items()}
     
     def is_supported(self, file_path: str) -> bool:
         """
@@ -172,16 +182,19 @@ class PipelineRegistry:
             ValueError: If no pipeline is registered with this name
         """
         name_lower = name.lower()
-        for p in set(self._pipelines.values()):
-            if p.name.lower() == name_lower:
-                return p
+        if name_lower in self._named_pipelines:
+            return self._named_pipelines[name_lower]
         
-        raise ValueError(f"No pipeline registered with name: {name}")
+        supported = ", ".join(self._named_pipelines.keys())
+        raise ValueError(
+            f"No pipeline registered with name: {name}. "
+            f"Registered pipelines: {supported or 'none'}"
+        )
 
     def clear(self) -> None:
-
         """Clear all registered pipelines (useful for testing)."""
         self._pipelines.clear()
+        self._named_pipelines.clear()
         print("🗑️ Cleared all registered pipelines")
 
 

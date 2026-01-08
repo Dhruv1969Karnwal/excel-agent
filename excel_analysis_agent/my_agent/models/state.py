@@ -139,14 +139,18 @@ class UnifiedAnalysisState(MessagesState):
     """
 
     # New unified fields
-    file_path: Optional[str]  # Generic file path for any asset type
-    asset_type: Optional[str]  # 'excel', 'document', 'powerpoint', etc.
-    kbid: Optional[str]  # Knowledge Base ID for RAG-based analysis
+    file_path: Optional[str]  # DEPRECATED - use assets list
+    asset_type: Optional[str]  # DEPRECATED - use assets list
+    kbid: Optional[str]  # DEPRECATED - use assets list
+    
+    # Multi-asset support
+    assets: Optional[List[Dict[str, Any]]]  # List of {path, type, kbid, id}
+    data_contexts: Optional[Dict[str, Dict[str, Any]]]  # Map of asset_id -> context
     
     # Backward compatibility - will be synced with file_path for Excel files
-    excel_file_path: Optional[str]  # DEPRECATED - use file_path
+    excel_file_path: Optional[str]  # DEPRECATED - use assets
     
-    data_context: Optional[Dict[str, Any]]  # Structured dict with file_path, description, summary
+    data_context: Optional[Dict[str, Any]]  # DEPRECATED - use data_contexts
     route_decision: Optional[RouterDecision]  # Router's classification
     supervisor_decision: Optional[SupervisorDecision]  # Supervisor's needs_analysis decision
     analysis_plan: Optional[str]
@@ -178,11 +182,13 @@ class CodingSubgraphInput(TypedDict, total=False):
         user_query: The original user query (extracted from parent messages)
         analysis_steps: Structured list of analysis steps with status tracking
     """
-    file_path: str  # Generic file path for any asset type
-    asset_type: str  # 'excel', 'document', 'powerpoint'
-    kbid: str  # Knowledge Base ID for RAG-based analysis
-    excel_file_path: str  # DEPRECATED - use file_path
-    data_context: Dict[str, Any]  # Structured dict
+    file_path: str  # DEPRECATED
+    asset_type: str  # DEPRECATED
+    kbid: str  # DEPRECATED
+    excel_file_path: str  # DEPRECATED
+    assets: List[Dict[str, Any]]
+    data_contexts: Dict[str, Dict[str, Any]]
+    data_context: Dict[str, Any]  # DEPRECATED
     analysis_plan: str
     user_query: str
     analysis_steps: List[AnalysisStep]
@@ -232,11 +238,13 @@ class CodingSubgraphState(TypedDict, total=False):
     """
 
     messages: Annotated[List[BaseMessage], add_messages]
-    file_path: str  # Generic file path for any asset type
-    asset_type: str  # 'excel', 'document', 'powerpoint'
-    kbid: str  # Knowledge Base ID for RAG-based analysis
-    excel_file_path: str  # DEPRECATED - use file_path
-    data_context: Dict[str, Any]  # Structured dict
+    file_path: str  # DEPRECATED
+    asset_type: str  # DEPRECATED
+    kbid: str  # DEPRECATED
+    excel_file_path: str  # DEPRECATED
+    assets: List[Dict[str, Any]]
+    data_contexts: Dict[str, Dict[str, Any]]
+    data_context: Dict[str, Any]  # DEPRECATED
     analysis_plan: str
     user_query: str
     code_iterations: int

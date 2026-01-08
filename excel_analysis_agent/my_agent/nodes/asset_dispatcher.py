@@ -1,7 +1,7 @@
 """Asset Dispatcher Node - Routes to correct pipeline based on file type."""
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from langchain_core.messages import AIMessage
 
@@ -11,160 +11,143 @@ from my_agent.pipelines.registry import registry
 
 async def asset_dispatcher_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     """
-    Dispatch to the correct asset pipeline based on file type.
+    Dispatch to the correct asset pipeline based on file type for ALL attached assets.
     
-    This node replaces the old data_inspector_node with unified pipeline support.
-    It:
-    1. Gets the file path from state (either file_path or excel_file_path)
-    2. Checks if context already exists for this file (skip re-inspection)
-    3. Determines asset type from extension
-    4. Gets the appropriate pipeline from registry
-    5. Calls the pipeline's inspect method
-    6. Updates state with context and asset type
+    This node:
+    1. Gets the list of assets from state
+    2. Iterates through each asset (file_path or kbid)
+    3. Checks if context already exists for each (skip re-inspection)
+    4. Determines asset type and gets appropriate pipeline
+    5. Calls pipeline's inspect method
+    6. Updates state with data_contexts (plural) mapping and maintains legacy context for primary
     
-    Maintains backward compatibility with excel_file_path for existing code.
-    
-    Args:
-        state: Current state containing file path and optional existing context
-        
     Returns:
-        Dictionary with data_context, asset_type, and messages updates
+        Dictionary with data_contexts (map), asset_type, and messages updates
     """
-    # Support both new file_path and legacy excel_file_path
-    file_path = state.get("file_path") or state.get("excel_file_path")
-    kbid = state.get("kbid")
-    existing_context = state.get("data_context")
-    
-    # CASE 1: Neither file_path nor kbid provided
-    if not file_path and not kbid:
-        return {
-            "data_context": {"error": "No file path or Knowledge Base ID (kbid) provided"},
-            "messages": [AIMessage(
-                content="Please provide a file path or Knowledge Base ID to analyze. I support Excel (.xlsx, .xls, .csv), "
-                        "Documents (.docx, .pdf, .txt, .md, or RAG via kbid), and PowerPoint (.pptx) files.",
-                name="AssetDispatcher"
-            )]
-        }
-    
-    # CASE 2: Knowledge Base ID (kbid) provided (Document RAG Pipeline)
-    if kbid and not file_path:
-        try:
-            # Get Document pipeline directly by name
-            pipeline = registry.get_pipeline_by_name("Document")
-            asset_type = "document"
-            
-            print(f"📡 Dispatching to {pipeline.name} pipeline for RAG (KBID: {kbid})")
-            
-            # Inspect using kbid (this will need update in DocumentPipeline.inspect)
-            # We pass kbid instead of file_path to the inspector
-            data_context = await pipeline.inspect(kbid)
-            
+    assets = state.get("assets")
+    if not assets:
+        # Fallback to single fields for backward compatibility if no assets list
+        file_path = state.get("file_path") or state.get("excel_file_path")
+        kbid = state.get("kbid")
+        if file_path or kbid:
+            # Normalize to assets list structure
+            assets = []
+            if file_path:
+                assets.append({"path": file_path, "type": state.get("asset_type")})
+            if kbid:
+                assets.append({"kbid": kbid, "type": "document"})
+        else:
             return {
-                "asset_type": asset_type,
-                "data_context": data_context,
-                "kbid": kbid,
+                "data_contexts": {"error": "No assets provided"},
                 "messages": [AIMessage(
-                    content=f"Knowledge Base initialization complete. Detected asset type: {pipeline.name}. "
-                            f"KBID: {kbid}",
+                    content="Please provide at least one file or Knowledge Base ID to analyze. I support Excel (.xlsx, .xls, .csv), "
+                            "Documents (.docx, .pdf, .txt, .md, or RAG via kbid), and PowerPoint (.pptx) files.",
                     name="AssetDispatcher"
                 )]
             }
+
+    data_contexts = state.get("data_contexts") or {}
+    new_messages = []
+    
+    for asset in assets:
+        asset_path = asset.get("path") or asset.get("file_path")
+        asset_kbid = asset.get("kbid") or asset.get("kb_id")
+        asset_id = asset_path or asset_kbid
+        
+        if not asset_id:
+            continue
+            
+        # Skip if already inspected
+        if asset_id in data_contexts:
+            print(f"✅ Using existing context for: {asset_id}")
+            continue
+
+        try:
+            # Resolve pipeline
+            target_type = asset.get("type", "").lower()
+            
+            if target_type and target_type in registry.registered_pipelines:
+                # Get pipeline by name (which is the key and is normalized)
+                pipeline = registry.get_pipeline_by_name(target_type)
+                
+                asset_name = asset.get("name", "Unnamed Asset")
+                if asset_kbid and not asset_path:
+                    print(f"📡 Dispatching to {pipeline.name} pipeline for RAG (KBID: {asset_kbid}, Name: {asset_name})")
+                    context = await pipeline.inspect(asset_kbid)
+                else:
+                    abs_path = os.path.abspath(asset_path)
+                    print(f"📂 Dispatching to {pipeline.name} pipeline for: {abs_path} (Name: {asset_name})")
+                    context = await pipeline.inspect(abs_path)
+            elif asset_kbid and not asset_path:
+                # Fallback for KBID if type not provided
+                pipeline = registry.get_pipeline_by_name("Document")
+                print(f"📡 Dispatching to {pipeline.name} pipeline for RAG (KBID: {asset_kbid})")
+                context = await pipeline.inspect(asset_kbid)
+            else:
+                # Fallback for path if type not provided
+                abs_path = os.path.abspath(asset_path)
+                if not registry.is_supported(abs_path):
+                    supported = ", ".join(f".{ext}" for ext in registry.supported_extensions)
+                    print(f"⚠️ Unsupported file type: {abs_path}. Supported: {supported}")
+                    continue
+                
+                pipeline = registry.get_pipeline_for_file(abs_path)
+                print(f"📂 Dispatching to {pipeline.name} pipeline for: {abs_path}")
+                context = await pipeline.inspect(abs_path)
+            
+            data_contexts[asset_id] = context
+            new_messages.append(AIMessage(
+                content=f"File inspection complete for {pipeline.name}. File: {asset_id}",
+                name="AssetDispatcher"
+            ))
+            
         except Exception as e:
-            error_msg = f"Error initializing KBID: {str(e)}"
+            error_msg = f"Error inspecting {asset_id}: {str(e)}"
             print(f"❌ {error_msg}")
-            return {
-                "data_context": {"error": error_msg},
-                "messages": [AIMessage(content=error_msg, name="AssetDispatcher")]
-            }
+            data_contexts[asset_id] = {"error": error_msg}
+            new_messages.append(AIMessage(content=error_msg, name="AssetDispatcher"))
 
-    # CASE 3: File path provided (Classic local file analysis)
-    # Resolve absolute path
+    # Determine "primary" asset for prompts/UI hints (Legacy fallback)
+    # We still calculate this for the 'asset_type' field used by the UI, 
+    # but we DO NOT let it overwrite the detailed data_contexts.
+    primary_asset_id = None
+    asset_type = "excel" # default fallback
+    
+    # Check for Codebase assets
+    codebase_assets = []
+    for aid, ctx in data_contexts.items():
+        if ctx.get("document_type") == "Codebase/Collection (RAG)":
+            codebase_assets.append(aid)
+            
+    # Check for Excel assets
+    excel_assets = []
+    for aid, ctx in data_contexts.items():
+        if "." in str(aid) and "excel" in str(ctx.get("description", "")).lower():
+             excel_assets.append(aid)
 
-    abs_file_path = os.path.abspath(file_path)
+    if codebase_assets:
+        primary_asset_id = codebase_assets[0]
+        asset_type = "codebase"
+    elif excel_assets:
+        primary_asset_id = excel_assets[0]
+        asset_type = "excel"
+    elif data_contexts:
+        primary_asset_id = list(data_contexts.keys())[0]
+        # Peek at context the type
+        target_ctx = data_contexts[primary_asset_id]
+        if "excel" in target_ctx.get("description", "").lower():
+            asset_type = "excel"
+        elif "powerpoint" in target_ctx.get("description", "").lower():
+            asset_type = "powerpoint"
+        elif "codebase" in target_ctx.get("description", "").lower():
+            asset_type = "codebase"
+        else:
+            asset_type = "document"
+
+    result = {
+        "data_contexts": data_contexts,
+        "messages": new_messages,
+        "asset_type": asset_type
+    }
     
-    # Check if we already have context for this exact file (context caching)
-    if existing_context and isinstance(existing_context, dict):
-        stored_path = existing_context.get("file_path", "")
-        if stored_path == abs_file_path:
-            print(f"✅ Using existing context for: {file_path}")
-            # Return empty dict - no state update needed, context already exists
-            return {}
-    
-    # Check if file type is supported
-    if not registry.is_supported(file_path):
-        supported = ", ".join(f".{ext}" for ext in registry.supported_extensions)
-        error_msg = (
-            f"Unsupported file type: {os.path.splitext(file_path)[1]}. "
-            f"Supported types: {supported}"
-        )
-        return {
-            "data_context": {"error": error_msg},
-            "messages": [AIMessage(
-                content=error_msg,
-                name="AssetDispatcher"
-            )]
-        }
-    
-    try:
-        # Get pipeline from registry
-        pipeline = registry.get_pipeline_for_file(file_path)
-        asset_type = pipeline.name.lower()
-        
-        print(f"📂 Dispatching to {pipeline.name} pipeline for: {file_path}")
-        
-        # Inspect the file using the pipeline
-        data_context = await pipeline.inspect(file_path)
-        
-        # Prepare result
-        result = {
-            "asset_type": asset_type,
-            "data_context": data_context,
-            "file_path": abs_file_path,  # Store normalized path
-            "messages": [AIMessage(
-                content=f"File inspection complete. Detected asset type: {pipeline.name}. "
-                        f"File: {data_context.get('file_name', file_path)}",
-                name="AssetDispatcher"
-            )]
-        }
-        
-        # Backward compatibility: also set excel_file_path for Excel files
-        if asset_type == "excel":
-            result["excel_file_path"] = abs_file_path
-        
-        print(f"✅ {pipeline.name} inspection complete for: {file_path}")
-        
-        return result
-        
-    except ImportError as e:
-        # Missing library for this file type
-        error_msg = str(e)
-        print(f"❌ Import error: {error_msg}")
-        return {
-            "data_context": {"error": error_msg},
-            "messages": [AIMessage(
-                content=f"Missing required library: {error_msg}",
-                name="AssetDispatcher"
-            )]
-        }
-    except ValueError as e:
-        # Unsupported file type or other value error
-        error_msg = str(e)
-        print(f"❌ Value error: {error_msg}")
-        return {
-            "data_context": {"error": error_msg},
-            "messages": [AIMessage(
-                content=error_msg,
-                name="AssetDispatcher"
-            )]
-        }
-    except Exception as e:
-        # General error during inspection
-        error_msg = f"Error inspecting file: {str(e)}"
-        print(f"❌ {error_msg}")
-        return {
-            "data_context": {"error": error_msg},
-            "messages": [AIMessage(
-                content=error_msg,
-                name="AssetDispatcher"
-            )]
-        }
+    return result

@@ -1,0 +1,10 @@
+{
+  "query": "List down all end points in this",
+  "attachments": [
+    {
+      "type": "excel",
+      "path": "C:\\Users\\Dhruv\\Desktop\\CodeMate.AI\\crafting-ai-agents\\testData\\esd.xlsx",
+      "name": "Sales Data"
+    }
+  ]
+}

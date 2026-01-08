@@ -9,22 +9,8 @@ from my_agent.nodes.planning import planning_node
 from my_agent.nodes.router import router_node
 from my_agent.nodes.supervisor import supervisor_node
 
-# Import and register all pipelines
-from my_agent.pipelines.registry import registry
-from my_agent.pipelines.excel import ExcelPipeline
-from my_agent.pipelines.document import DocumentPipeline
-from my_agent.pipelines.powerpoint import PowerPointPipeline
-
-# Register pipelines at module load
-# This happens once when the module is imported
-def _register_pipelines():
-    """Register all available asset pipelines."""
-    if not registry.supported_extensions:
-        registry.register(ExcelPipeline())
-        registry.register(DocumentPipeline())
-        registry.register(PowerPointPipeline())
-
-_register_pipelines()
+# Note: Pipelines are now registered dynamically via the /chat endpoint
+# in main.py using process_incoming_request.
 
 
 def route_after_router(state: UnifiedAnalysisState) -> str:
@@ -54,42 +40,40 @@ def route_after_router(state: UnifiedAnalysisState) -> str:
         return "supervisor"
 
     # Route 3: New analysis request -> check if data inspection needed
+    # Route 3: New analysis request -> check if data inspection needed
     elif route == "analysis":
-        data_context = state.get("data_context")
-        # Support both new file_path and legacy excel_file_path, and now kbid
-        file_path = state.get("file_path") or state.get("excel_file_path")
-        kbid = state.get("kbid")
-
-        # No context exists -> need inspection
-        if not data_context:
-            print("🔍 No data context found, routing to asset_dispatcher")
+        # Multi-Asset Validation Logic
+        requested_assets = state.get("assets") or []
+        data_contexts = state.get("data_contexts") or {}
+        
+        # If no assets requested, generic chat or error
+        if not requested_assets:
+            print("⚠️ No assets provided, might be a generic query or early state, routing to asset_dispatcher just in case")
+            # If we trust the prompt, we should have gone to 'chat', but 'analysis' with no asset is weird.
+            # We send to asset_dispatcher which will handle the "0 assets" case (graceful error/hint).
             return "asset_dispatcher"
 
-        # Case 1: KBID provided (RAG)
-        if kbid and not file_path:
-            stored_kbid = data_context.get("kbid")
-            if stored_kbid != kbid:
-                print("📡 KBID changed, routing to asset_dispatcher")
-                return "asset_dispatcher"
-            print("✅ Data context exists for KBID, routing to supervisor")
-            return "supervisor"
-
-        # Case 2: File path provided (Classic)
-        # No file path or kbid provided -> need inspection
-        if not file_path and not kbid:
-            print("⚠️ No file_path or kbid provided, routing to asset_dispatcher")
+        # Check if ALL requested assets have a corresponding context
+        all_assets_ready = True
+        for asset in requested_assets:
+            # Asset ID is either path or kbid
+            asset_id = asset.get("path") or asset.get("file_path") or asset.get("kbid")
+            
+            # Normalize ID check (contexts are stored by absolute path or kbid string)
+            if asset_id:
+                # If path, ensure we check absolute path
+                if "." in asset_id and "/" in asset_id: # likely path
+                    asset_id = os.path.abspath(asset_id)
+                
+                if asset_id not in data_contexts:
+                     print(f"🔍 Missing context for {asset_id}, routing to asset_dispatcher")
+                     all_assets_ready = False
+                     break
+        
+        if not all_assets_ready:
             return "asset_dispatcher"
 
-        # Check if file path matches
-        if file_path:
-            stored_path = data_context.get("file_path", "")
-            current_path = os.path.abspath(file_path)
-
-            if stored_path != current_path:
-                print("📝 File path changed, routing to asset_dispatcher")
-                return "asset_dispatcher"
-
-        print("✅ Data context exists and matches, routing to supervisor")
+        print("✅ All requested assets have valid contexts, routing to supervisor")
         return "supervisor"
 
 
@@ -225,10 +209,10 @@ def create_analysis_graph():
     return graph
 
 
-# Backward compatibility alias
-def create_excel_analysis_graph():
-    """DEPRECATED: Use create_analysis_graph() instead. Kept for backward compatibility."""
-    return create_analysis_graph()
+# # Backward compatibility alias
+# def create_excel_analysis_graph():
+#     """DEPRECATED: Use create_analysis_graph() instead. Kept for backward compatibility."""
+#     return create_analysis_graph()
 
 
 # Create the graph instance for LangGraph Studio

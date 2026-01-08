@@ -27,7 +27,7 @@ class DocumentPipeline(AssetPipeline):
     - Information extraction
     
     Uses full-context approach: the entire document is passed
-    to the LLM for analysis. Future enhancement: RAG for large docs.
+    to the LLM for analysis.
     
     Uses the same core workflow as Excel:
     - Router → Supervisor → Planning → Coding Agent

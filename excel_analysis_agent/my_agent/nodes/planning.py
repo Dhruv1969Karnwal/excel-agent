@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from my_agent.models.state import UnifiedAnalysisState
 from my_agent.pipelines.registry import registry
 # Fallback prompts for backward compatibility
-from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
+# from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
 from pprint import pprint
 
 async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
@@ -38,31 +38,96 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     from my_agent.core.llm_client import litellm_completion
 
     # Get user query
-    user_query = state.get("user_query", "Analyze the data")
+    user_query = state.get("user_query", "Analyze")
 
-    # Get data context
-    data_context_dict = state.get("data_context")
-    data_context = ""
-    if data_context_dict:
-        data_context = data_context_dict.get("description", "No data description available")
-
-    # Get pipeline-specific prompts based on asset type
-    asset_type = state.get("asset_type", "excel").lower()
-    file_path = state.get("file_path") or state.get("excel_file_path")
+    # Get data contexts (plural)
+    data_contexts = state.get("data_contexts") or {}
+    print("[Planning DEBUG inside planning_node] Data contexts: ")
+    pprint(data_contexts, indent=2)
+    combined_data_context = ""
     
-    # Try to get prompts from pipeline, fallback to default
-    try:
-        if file_path:
-            pipeline = registry.get_pipeline_for_file(file_path)
+    if data_contexts:
+        context_parts = []
+        for asset_id, ctx in data_contexts.items():
+            desc = ctx.get("description", "No description")
+            context_parts.append(f"--- Asset: {asset_id} ---\n{desc}")
+        combined_data_context = "\n\n".join(context_parts)
+    else:
+        combined_data_context = "No data loaded."
+
+    # Determine prompt strategy based on asset types
+    asset_types = set()
+    for ctx in data_contexts.values():
+        dtype = ctx.get("document_type", "").lower()
+        if "excel" in dtype or "csv" in dtype:
+            asset_types.add("Excel")
+        elif "codebase" in dtype:
+            asset_types.add("Codebase")
+        elif "powerpoint" in dtype:
+            asset_types.add("PowerPoint")
+        else:
+            asset_types.add("Document")
+
+    print("[Planning DEBUG inside planning_node] Asset types: ")
+    pprint(asset_types, indent=2)
+    # Select Pipeline Prompts
+    # Case 1: Single Asset Type -> Use that pipeline's specific prompts
+    if len(asset_types) == 1:
+        print("[Planning DEBUG inside planning_node] Single asset type detected.")
+        target_type = list(asset_types)[0]
+        print(f"[Planning DEBUG inside planning_node] Target type: {target_type}")
+        try:
+            pipeline = registry.get_pipeline_by_name(target_type)
+            print(f"[Planning DEBUG inside planning_node] Pipeline: {pipeline}")
             planning_sys_prompt = pipeline.get_planning_system_prompt()
             planning_user_prompt = pipeline.get_planning_user_prompt()
-            print(f"[Planning DEBUG inside planning_node] Using {pipeline.name} pipeline prompts for planning")
-        else:
+            print(f"[Planning DEBUG inside planning_node] Using {pipeline.name} pipeline prompts")
+        except Exception as e:
+            # Fallback only if pipeline fetch fails (should not happen in unified plan)
+            print(f"[Planning DEBUG inside planning_node] Error getting pipeline prompts: {e}.")
+            from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
             planning_sys_prompt = PLANNING_SYS_PROMPT
             planning_user_prompt = PLANNING_USER_PROMPT
-            print("[Planning DEBUG inside planning_node] Using default prompts for planning")
-    except Exception as e:
-        print("[Planning DEBUG inside planning_node] Could not get pipeline prompts: {e}, using defaults")
+            
+    # Case 2: Mixed Asset Types -> Dynamically Merge Prompts
+    elif len(asset_types) > 1:
+        print(f"[Planning] Mixed asset types detected {asset_types}. Merging prompts dynamically.")
+        
+        sys_prompts = []
+        user_prompts = []
+        
+        # 1. Fetch prompts from ALL active pipelines
+        try:
+            print("[Planning DEBUG inside planning_node] Fetching prompts from ALL active pipelines.")
+            for dtype in asset_types:
+                # Map asset type string back to pipeline instance
+                # The registry names are usually capitalized (Excel, Document), asset_types has them.
+                pipeline = registry.get_pipeline_by_name(dtype)
+                sys_prompts.append(f"--- Instructions for {dtype} Analysis ---\n{pipeline.get_planning_system_prompt()}")
+                # We typically use the first user prompt or a generic one, but let's check
+                # Ideally user prompt is just "Here is the query: {query}", so we can use a generic header.
+            
+            # 2. Combine System Prompts
+            header = "You are a Multi-Asset Analysis Agent. You must combine the capabilities of the following specialists:"
+            planning_sys_prompt = f"{header}\n\n" + "\n\n".join(sys_prompts)
+            planning_sys_prompt += "\n\nIMPORTANT: You must cross-reference information between these assets. Plan steps that involve switching contexts (e.g., read Excel -> search Codebase)."
+
+            # 3. Use Generic User Prompt (to avoid conflict/duplication)
+            # We import this just for the structure "{user_query} ... {data_context}"
+            from my_agent.prompts.prompts import PLANNING_USER_PROMPT
+            planning_user_prompt = PLANNING_USER_PROMPT
+
+        except Exception as e:
+            print(f"[Planning DEBUG inside planning_node] Error merging prompts: {e}.")
+            print("[Planning DEBUG inside planning_node] Using default prompts.")
+            from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
+            planning_sys_prompt = PLANNING_SYS_PROMPT
+            planning_user_prompt = PLANNING_USER_PROMPT
+
+    # Case 3: No Data -> Default
+    else:
+        print("[Planning DEBUG inside planning_node] No data detected. Using default prompts.")
+        from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
         planning_sys_prompt = PLANNING_SYS_PROMPT
         planning_user_prompt = PLANNING_USER_PROMPT
 
@@ -71,7 +136,7 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     user_prompt = HumanMessage(
         content=planning_user_prompt.format(
             user_query=user_query,
-            data_context=data_context
+            data_context=combined_data_context
         )
     )
 

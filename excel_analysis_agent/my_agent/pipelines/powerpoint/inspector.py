@@ -181,6 +181,7 @@ async def inspect_presentation(file_path: str) -> Dict[str, Any]:
     return {
         "file_path": os.path.abspath(file_path),
         "file_name": file_name,
+        "document_type": "PowerPoint Presentation",
         "analyzed_at": datetime.now().isoformat(),
         "description": description,
         "full_text": full_text,  # Full content for LLM context

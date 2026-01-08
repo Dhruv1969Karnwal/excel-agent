@@ -51,16 +51,30 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     ])
 
 
-    # Check if data context exists
-    data_context = state.get("data_context")
-    has_data_context = data_context is not None
+    # Check if data context exists (Multi-Asset Support)
+    data_contexts = state.get("data_contexts") or {}
+    
+    has_data_context = len(data_contexts) > 0
     data_context_summary = ""
 
     if has_data_context:
-        file_name = data_context.get("file_name", "unknown")
-        num_rows = data_context.get("summary", {}).get("num_rows", 0)
-        num_columns = data_context.get("summary", {}).get("num_columns", 0)
-        data_context_summary = f"File: {file_name} ({num_rows} rows, {num_columns} columns)"
+        summary_parts = []
+        for asset_id, ctx in data_contexts.items():
+            # Extract summary details based on context type
+            file_name = ctx.get("file_name", str(asset_id))
+            desc = ctx.get("description", "No description")
+            
+            # Use specific fields if available for cleaner summary
+            if "num_rows" in ctx.get("summary", {}):
+                rows = ctx.get("summary", {}).get("num_rows", 0)
+                cols = ctx.get("summary", {}).get("num_columns", 0)
+                summary_parts.append(f"- Asset: {file_name} (Excel: {rows} rows, {cols} cols)\n  Description: {desc}")
+            else:
+                summary_parts.append(f"- Asset: {file_name}\n  Description: {desc}")
+        
+        data_context_summary = "\n".join(summary_parts)
+    else:
+        data_context_summary = "No data loaded yet."
 
     # Create prompts
     system_prompt = SystemMessage(content=ROUTER_SYS_PROMPT)
@@ -93,9 +107,9 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         response_format=RouterOutput
     )
     
-    print("[DEBUG ROUTER] Router Decision obtained.")
+    # print("[DEBUG ROUTER] Router Decision obtained.")
     print(f"[DEBUG ROUTER] Route: {response.route}")
-    print(f"[DEBUG ROUTER] Reasoning: {response.reasoning}")
+    # print(f"[DEBUG ROUTER] Reasoning: {response.reasoning}")
 
     route_decision: RouterDecision = {
         "route": response.route,
