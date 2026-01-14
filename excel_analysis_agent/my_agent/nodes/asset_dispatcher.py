@@ -9,7 +9,11 @@ from my_agent.models.state import UnifiedAnalysisState
 from my_agent.pipelines.registry import registry
 
 
-async def asset_dispatcher_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
+from langchain_core.callbacks.manager import adispatch_custom_event
+from langchain_core.runnables import RunnableConfig
+
+
+async def asset_dispatcher_node(state: UnifiedAnalysisState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Dispatch to the correct asset pipeline based on file type for ALL attached assets.
     
@@ -73,10 +77,28 @@ async def asset_dispatcher_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
                 asset_name = asset.get("name", "Unnamed Asset")
                 if asset_kbid and not asset_path:
                     print(f"📡 Dispatching to {pipeline.name} pipeline for RAG (KBID: {asset_kbid}, Name: {asset_name})")
+                    await adispatch_custom_event(
+                        "status",
+                        {
+                            "type": "status",
+                            "message": f"Dispatching to {pipeline.name} pipeline for RAG...",
+                            "node": "asset_dispatcher"
+                        },
+                        config=config
+                    )
                     context = await pipeline.inspect(asset_kbid)
                 else:
                     abs_path = os.path.abspath(asset_path)
                     print(f"📂 Dispatching to {pipeline.name} pipeline for: {abs_path} (Name: {asset_name})")
+                    await adispatch_custom_event(
+                        "status",
+                        {
+                            "type": "status",
+                            "message": f"Dispatching to {pipeline.name} pipeline for file: {os.path.basename(abs_path)}...",
+                            "node": "asset_dispatcher"
+                        },
+                        config=config
+                    )
                     context = await pipeline.inspect(abs_path)
             elif asset_kbid and not asset_path:
                 # Fallback for KBID if type not provided

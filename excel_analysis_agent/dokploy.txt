@@ -1,0 +1,128 @@
+first we create application using  
+ - http://35.232.206.182:3000/api/application.create post request 
+ - body {
+  "name": "name accordingly ",
+  "environmentId": "A71ogw4aDRXiXT7-f6DL2"
+}
+it return a josn resposen from that in store the {
+    "applicationId": "ihzvb3OfkzKKafZjHzCPY",
+    "name": "PYTHON DHRUV Uvicorn - test new ",
+    "appName": "app-copy-neural-matrix-dor5f6", }
+
+make sure application name is unique always 
+
+
+
+second - 
+http://35.232.206.182:3000/api/trpc/application.dropDeployment
+
+in that use form data to applicationId and zip 
+
+now what is zip file   the llm given the code teh execute save in the app/main.py
+and 2 otehr files at app folder level is one is Dockerfile and other is requirements.txt  present in the root directory of the zip filr  
+
+Dockerfile - FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+requirements.txt - 
+"pandas",
+            "numpy",
+            "openpyxl",
+            "matplotlib",
+            "seaborn",
+            "scipy",
+            "statsmodels",
+            "scikit-learn",
+            "tabulate",
+            "python-dateutil",
+
+
+{
+    "result": {
+        "data": {
+            "json": true
+        }
+    }
+}
+
+
+
+
+
+third is after POST http://35.232.206.182:3000/api/application.saveBuildType 
+
+{
+  "applicationId": "BYTpBGzcJYka0VI6yblxE",
+  "buildType": "dockerfile",
+  "publishDirectory": null,
+  "dockerfile": "Dockerfile",
+  "dockerContextPath": "",
+  "dockerBuildStage": "",
+  "herokuVersion": null,
+  "isStaticSpa": null,
+  "railpackVersion": null
+}
+
+use same applicatioID  it return true  json ( i think)
+
+
+forst is http://35.232.206.182:3000/api/application.deploy 
+
+body is {
+    "applicationId":"BYTpBGzcJYka0VI6yblxE"
+}
+
+than it send the 200 status 
+
+
+fifth is  http://35.232.206.182:3000/api/deployment.all?applicationId=ihzvb3OfkzKKafZjHzCPY   
+it return array of josn than check the first list and check that  [
+    {
+        "deploymentId": "mIdIF7n7B2JODlv4rccbo",
+        "title": "Manual deployment",
+        "description": "",
+        "status": "done",
+        "logPath": "/etc/dokploy/logs/app-copy-neural-matrix-dor5f6/app-copy-neural-matrix-dor5f6-2026-01-08:19:41:44.log",
+        "pid": null,
+        "applicationId": "ihzvb3OfkzKKafZjHzCPY",
+        "composeId": null,
+        "serverId": null,
+        "isPreviewDeployment": false,
+        "previewDeploymentId": null,
+        "createdAt": "2026-01-08T19:41:44.585Z",
+        "startedAt": "2026-01-08T19:41:44.585Z",
+        "finishedAt": "2026-01-08T19:41:44.864Z",
+        "errorMessage": null,
+        "scheduleId": null,
+        "backupId": null,
+        "rollbackId": null,
+        "volumeBackupId": null,
+        "buildServerId": null
+    },] and check that status : if done means all correct than means containes is setup successfully 
+
+
+
+
+sixth than we make a end point to got the container id is   http://35.232.206.182:3000/api/trpc/organization.all,user.getInvitations,application.one,docker.getContainersByAppNameMatch,environment.byProjectId,docker.getConfig?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%2C%221%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%2C%222%22%3A%7B%22json%22%3A%7B%22applicationId%22%3A%22BYTpBGzcJYka0VI6yblxE%22%7D%7D%2C%223%22%3A%7B%22json%22%3A%7B%22appName%22%3A%22app-compress-online-bus-ycosyy%22%2C%22serverId%22%3A%22%22%7D%7D%2C%224%22%3A%7B%22json%22%3A%7B%22projectId%22%3A%22lOOolgBk2tY-wpFRvySUk%22%7D%7D%2C%225%22%3A%7B%22json%22%3A%7B%22containerId%22%3A%22select-a-container%22%2C%22serverId%22%3A%22%22%7D%7D%7D 
+looks liek this 
+
+this return me conatienr id store that 
+
+
+
+seventh make a web seocket connect to print the terminal outputs - ws://35.232.206.182:3000/listen-deployment?logPath=/etc/dokploy/logs/etc/dokploy/logs/app-compress-online-bus-ycosyy/app-compress-online-bus-ycosyy-2026-01-08:11:11:18.log   and use   x-api-key:codemateIgJZLeRwPQqKFyOvHXJifnUhwxAGsUucVXWxFqjxkaAHdzczpFACUWZDUHCGJhiK   
+
+not questyion is that how to got the   logPath=/etc/do ??
+it commes form that fifth steps log file path "logPath": "/etc/dokploy/logs/app-copy-  
+
+
+than same like in sandbox send the output back to the node 
+

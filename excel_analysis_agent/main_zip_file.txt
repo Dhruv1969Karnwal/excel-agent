@@ -1,0 +1,95 @@
+
+import matplotlib
+matplotlib.use("Agg")  # REQUIRED for containers
+
+import sys
+import io
+import base64
+import json
+import matplotlib.pyplot as plt
+from fastapi import FastAPI
+import contextlib
+import traceback
+
+app = FastAPI()
+
+# Cache for the execution result
+_RESULT = None
+
+@app.on_event("startup")
+async def startup_event():
+    global _RESULT
+    # Execute the user code here when the container starts
+    print("Starting user code execution...", flush=True)
+
+    output_capture = io.StringIO()
+    plots_data = []
+
+    # Custom show to capture plots
+    def custom_show():
+        # CRITICAL FIX: Get the current figure explicitly
+        fig = plt.gcf()  # Get current figure
+        
+        # Force a draw to ensure all elements are rendered
+        fig.canvas.draw()
+        
+        # Use tight_layout to prevent cutoff
+        try:
+            fig.tight_layout()
+        except:
+            pass  # tight_layout might fail on some plots
+        
+        buf = io.BytesIO()
+        # Save with explicit parameters
+        fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', facecolor='white')
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        plots_data.append(img_str)
+        plt.close(fig)
+
+    # Monkey patch plt.show
+    plt.show = custom_show
+
+    user_code = 'with open(\'text.md\', \'r\') as f:\n    full_text = f.read()\n\nimport re\n\n# Extract Architecture Overview section\narch_overview = re.search(r\'##\\s*Architecture Overview(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif arch_overview:\n    arch_content = arch_overview.group(1).strip()\n    # Find Benefits subsection\n    benefits_match = re.search(r\'###\\s*Benefits(.*?)(?=###|\\Z)\', arch_content, re.DOTALL)\n    if benefits_match:\n        benefits_text = benefits_match.group(1).strip()\n        # Extract the 6 benefits\n        benefits = re.findall(r\'\\d+\\.\\s*(.*?)(?=\\n\\d+\\.|\\Z)\', benefits_text)\n        print("6 Benefits:")\n        for i, benefit in enumerate(benefits, 1):\n            print(f"{i}. {benefit}")\n    else:\n        print("Benefits section not found in Architecture Overview")\nelse:\n    print("Architecture Overview section not found")\n\n# Extract Setup Instructions\nsetup_instructions = re.search(r\'##\\s*Setup Instructions(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif setup_instructions:\n    setup_content = setup_instructions.group(1).strip()\n    # Extract the 4 steps\n    steps = re.findall(r\'\\d+\\.\\s*(.*?)(?=\\n\\d+\\.|\\Z)\', setup_content)\n    print("\\n4-Step Setup:")\n    for i, step in enumerate(steps, 1):\n        print(f"{i}. {step}")\nelse:\n    print("Setup Instructions section not found")\n\n# Extract Troubleshooting\ntroubleshooting = re.search(r\'##\\s*Troubleshooting(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif troubleshooting:\n    troubleshoot_content = troubleshooting.group(1).strip()\n    # Extract the 3 scenarios\n    scenarios = re.findall(r\'###\\s*(.*?)(?=\\n###|\\Z)\', troubleshoot_content)\n    print("\\n3 Troubleshooting Scenarios:")\n    for i, scenario in enumerate(scenarios, 1):\n        print(f"{i}. {scenario}")\nelse:\n    print("Troubleshooting section not found")\n\n# Check for API Endpoints section\napi_endpoints = re.search(r\'##\\s*API Endpoints(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif api_endpoints:\n    api_content = api_endpoints.group(1).strip()\n    print("\\nAPI Endpoints Section Found. Content:")\n    print(api_content)\nelse:\n    print("API Endpoints section not found")\n\n# Main theme and purpose\nmain_theme = "Microservice-based sandbox architecture for the Excel Analysis Agent, enabling isolated code execution with benefits like performance, debugging, and scalability."\nprint(f"\\nMain Theme and Purpose: {main_theme}")\nwith open(\'text.md\', \'r\') as f:\n    full_text = f.read()\n\nimport re\n\n# Extract Architecture Overview section\narch_overview = re.search(r\'##\\s*Architecture Overview(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif arch_overview:\n    arch_content = arch_overview.group(1).strip()\n    \n    # Extract 6 benefits directly from numbered items\n    benefits = re.findall(r\'\\d+\\.\\s*(.*?)(?=\\n\\d+\\.|\\Z)\', arch_content)\n    print("6 Benefits:")\n    for i, benefit in enumerate(benefits, 1):\n        print(f"{i}. {benefit}")\nelse:\n    print("Architecture Overview section not found")\n\n# Extract Setup Instructions\nsetup_instructions = re.search(r\'##\\s*Setup Instructions(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif setup_instructions:\n    setup_content = setup_instructions.group(1).strip()\n    \n    # Extract 4 steps with ### prefix\n    steps = re.findall(r\'###\\s*\\d+\\.\\s*(.*?)(?=\\n###\\s*\\d+\\.|\\Z)\', setup_content)\n    print("\\n4-Step Setup:")\n    for i, step in enumerate(steps, 1):\n        print(f"{i}. {step}")\nelse:\n    print("Setup Instructions section not found")\n\n# Extract Troubleshooting\ntroubleshooting = re.search(r\'##\\s*Troubleshooting(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif troubleshooting:\n    troubleshoot_content = troubleshooting.group(1).strip()\n    \n    # Extract 3 scenarios with ### prefix\n    scenarios = re.findall(r\'###\\s*(.*?)(?=\\n###\\s*|\\Z)\', troubleshoot_content)\n    print("\\n3 Troubleshooting Scenarios:")\n    for i, scenario in enumerate(scenarios, 1):\n        print(f"{i}. {scenario}")\nelse:\n    print("Troubleshooting section not found")\n\n# Check for API Endpoints section\napi_endpoints = re.search(r\'##\\s*API Endpoints(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif api_endpoints:\n    api_content = api_endpoints.group(1).strip()\n    print("\\nAPI Endpoints Section Found. Content:")\n    print(api_content)\nelse:\n    print("API Endpoints section not found")\n\n# Main theme and purpose\nmain_theme = "Microservice-based sandbox architecture for the Excel Analysis Agent, enabling isolated code execution with benefits like performance, debugging, and scalability."\nprint(f"\\nMain Theme and Purpose: {main_theme}")\nwith open(\'text.md\', \'r\') as f:\n    full_text = f.read()\n\nimport re\n\n# Extract Architecture Overview section\narch_overview = re.search(r\'##\\s*Architecture Overview(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif arch_overview:\n    arch_content = arch_overview.group(1).strip()\n    print("\\nArchitecture Overview Content (truncated for brevity):\\n")\n    print(arch_content[:1000] + \'...\')  # Show first 1000 chars\n    \n    # Extract 6 benefits directly from numbered items\n    benefits = re.findall(r\'\\d+\\.\\s*(.*?)(?=\\n\\d+\\.|\\Z)\', arch_content)\n    print("\\n6 Benefits (from regex):\\n")\n    for i, benefit in enumerate(benefits, 1):\n        print(f"{i}. {benefit}")\nelse:\n    print("Architecture Overview section not found")\n\n# Extract Setup Instructions\nsetup_instructions = re.search(r\'##\\s*Setup Instructions(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif setup_instructions:\n    setup_content = setup_instructions.group(1).strip()\n    print("\\nSetup Instructions Content (truncated):\\n")\n    print(setup_content[:1000] + \'...\')\n    \n    # Extract 4 steps with ### prefix\n    steps = re.findall(r\'###\\s*\\d+\\.\\s*(.*?)(?=\\n###\\s*\\d+\\.|\\Z)\', setup_content)\n    print("\\n4-Step Setup (from regex):\\n")\n    for i, step in enumerate(steps, 1):\n        print(f"{i}. {step}")\nelse:\n    print("Setup Instructions section not found")\n\n# Extract Troubleshooting\ntroubleshooting = re.search(r\'##\\s*Troubleshooting(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif troubleshooting:\n    troubleshoot_content = troubleshooting.group(1).strip()\n    print("\\nTroubleshooting Content (truncated):\\n")\n    print(troubleshoot_content[:1000] + \'...\')\n    \n    # Extract 3 scenarios with ### prefix\n    scenarios = re.findall(r\'###\\s*(.*?)(?=\\n###\\s*|\\Z)\', troubleshoot_content)\n    print("\\n3 Troubleshooting Scenarios (from regex):\\n")\n    for i, scenario in enumerate(scenarios, 1):\n        print(f"{i}. {scenario}")\nelse:\n    print("Troubleshooting section not found")\n\n# Check for API Endpoints section\napi_endpoints = re.search(r\'##\\s*API Endpoints(.*?)(?=##|\\Z)\', full_text, re.DOTALL)\nif api_endpoints:\n    api_content = api_endpoints.group(1).strip()\n    print("\\nAPI Endpoints Section Found. Content (truncated):\\n")\n    print(api_content[:1000] + \'...\')\nelse:\n    print("API Endpoints section not found")\n\n# Main theme and purpose\nmain_theme = "Microservice-based sandbox architecture for the Excel Analysis Agent, enabling isolated code execution with benefits like performance, debugging, and scalability."\nprint(f"\\nMain Theme and Purpose: {main_theme}")'
+    
+    try:
+        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+            exec(user_code, globals())
+            
+            # Check if there are any open figures that weren't shown
+            if plt.get_fignums():
+                # print("Capturing remaining plots...", flush=True)
+                custom_show()
+                
+        output = output_capture.getvalue()
+        success = True
+        error = None
+    except Exception as e:
+        output = output_capture.getvalue()
+        success = False
+        error = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+    finally:
+        # Ensure all figures are closed
+        plt.close('all')
+
+    # Print a special delimiter so we can parse the result from logs
+    _RESULT = {
+        "success": success,
+        "output": output,
+        "error": error,
+        "plots": plots_data
+    }
+
+    # DIRECT STDOUT OUTPUT FOR WEBSOCKET
+    sys.__stdout__.write("__DOKPLOY_RESULT_START__\n")
+    sys.__stdout__.write(json.dumps(_RESULT) + "\n")
+    sys.__stdout__.write("__DOKPLOY_RESULT_END__\n")
+    sys.__stdout__.flush()
+
+@app.get("/")
+def health():
+    return {"status": "running"}
+
+@app.get("/result")
+def get_result():
+    return _RESULT

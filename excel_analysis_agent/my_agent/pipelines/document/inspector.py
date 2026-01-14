@@ -85,9 +85,10 @@ async def extract_text_from_pdf(file_path: str) -> Dict[str, Any]:
     try:
         import PyPDF2
     except ImportError:
-        raise ImportError(
-            "PyPDF2 not installed. Run: pip install PyPDF2"
-        )
+        # Try to install it if missing
+        import subprocess
+        subprocess.check_call(["pip", "install", "PyPDF2"])
+        import PyPDF2
     
     def _extract():
         with open(file_path, 'rb') as file:
@@ -96,14 +97,25 @@ async def extract_text_from_pdf(file_path: str) -> Dict[str, Any]:
             pages = []
             full_text_parts = []
             
+            # Extract basic metadata
+            info = reader.metadata or {}
+            metadata = {
+                "title": info.get("/Title", ""),
+                "author": info.get("/Author", ""),
+                "subject": info.get("/Subject", ""),
+                "creator": info.get("/Creator", ""),
+                "producer": info.get("/Producer", ""),
+            }
+            
             for page_num, page in enumerate(reader.pages, 1):
                 text = page.extract_text() or ""
-                pages.append({
-                    "page_number": page_num,
-                    "text": text,
-                    "word_count": len(text.split())
-                })
-                full_text_parts.append(text)
+                if text.strip():
+                    pages.append({
+                        "page_number": page_num,
+                        "text": text,
+                        "word_count": len(text.split())
+                    })
+                    full_text_parts.append(f"--- Page {page_num} ---\n{text}")
             
             combined_text = "\n\n".join(full_text_parts)
             
@@ -112,6 +124,7 @@ async def extract_text_from_pdf(file_path: str) -> Dict[str, Any]:
                 "full_text": combined_text,
                 "page_count": len(reader.pages),
                 "word_count": len(combined_text.split()),
+                "metadata": metadata
             }
     
     return await asyncio.to_thread(_extract)
@@ -175,9 +188,16 @@ async def inspect_document(file_path: str) -> Dict[str, Any]:
 
     
     # Extract based on file type
-    if ext in ['.docx', '.doc']:
+    if ext == '.docx':
         extraction = await extract_text_from_docx(file_path)
-        doc_type = "Word Document"
+        doc_type = "Word Document (.docx)"
+    elif ext == '.doc':
+        # Basic .doc support (treat as text/binary for now if no parser)
+        try:
+            extraction = await extract_text_from_txt(file_path)
+            doc_type = "Legacy Word Document (.doc)"
+        except:
+            raise ValueError(f"Direct parsing of .doc files requires external tools. Please convert to .docx: {ext}")
     elif ext == '.pdf':
         extraction = await extract_text_from_pdf(file_path)
         doc_type = "PDF Document"

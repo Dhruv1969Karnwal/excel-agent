@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from my_agent.models.state import ExcelAnalysisState, SupervisorDecision
 from my_agent.prompts.prompts import SUPERVISOR_SYS_PROMPT, SUPERVISOR_USER_PROMPT
 from pprint import pprint
-
-async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
+from langchain_core.runnables import RunnableConfig
+from datetime import datetime
+import json
+async def supervisor_node(state: ExcelAnalysisState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Supervisor Node - Evaluates if new code execution is needed.
 
@@ -25,8 +27,25 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with supervisor_decision and user_query updates
     """
+    queue = config.get("configurable", {}).get("stream_queue")
+
+    async def send_status(data):
+        if queue:
+            await queue.put(data)
+        else:
+            # Fallback for local testing or if queue not provided
+            print(f"[DEBUG NO QUEUE] {data}")
+
     print("Supervisor: Evaluating if new analysis is needed...")
 
+    await send_status({
+        "type": "status",
+        "node": "supervisor",
+        "message": "Supervisor: Evaluating if new analysis is needed...",
+        "payload": {},
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
 
@@ -36,13 +55,18 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
 
     # Get data context (Multi-Asset Support)
     data_contexts = state.get("data_contexts") or {}
+
+    print("[Supervisor DEBUG inside supervisor_node] Data contexts: ")
+    # with open("data_contexts.json", "w") as f:
+    #     json.dump(data_contexts, f, indent=4)
     
     data_context = ""
     if data_contexts:
         context_parts = []
         for asset_id, ctx in data_contexts.items():
             desc = ctx.get("description", "No description")
-            context_parts.append(f"--- Asset: {asset_id} ---\n{desc}")
+            file_name = ctx.get("file_name", "No file name")
+            context_parts.append(f"--- Asset: {file_name} ---\n{desc}")
         data_context = "\n\n".join(context_parts)
     else:
         data_context = "No data description available"
@@ -88,6 +112,17 @@ async def supervisor_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         "needs_analysis": response.needs_analysis,
         "reasoning": response.reasoning
     }
+
+    await send_status({
+        "type": "decision",
+        "node": "supervisor",
+        "message": f"Supervisor decision: {'Analysis needed' if response.needs_analysis else 'Answer from context'}",
+        "payload": {
+            "needs_analysis": response.needs_analysis,
+            "reasoning": response.reasoning
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
 
     # print(f"[Supervisor DEBUG inside supervisor_node] Supervisor Decision: {'New analysis needed' if response.needs_analysis else 'Answer from context'}")
     # print(f"[Supervisor DEBUG inside supervisor_node] Reasoning: {response.reasoning}")

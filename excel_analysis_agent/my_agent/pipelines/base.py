@@ -124,6 +124,13 @@ class AssetPipeline(ABC):
         """
         pass
     
+    @abstractmethod
+    def get_tools(self) -> List[Any]:
+        """
+        Return the list of tools available for this pipeline's specialist.
+        """
+        pass
+    
     def can_handle(self, file_path: str) -> bool:
         """
         Check if this pipeline can handle the given file.

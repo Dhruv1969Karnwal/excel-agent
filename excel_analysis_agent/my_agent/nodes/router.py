@@ -10,7 +10,12 @@ from my_agent.models.state import ExcelAnalysisState, RouterDecision
 from my_agent.prompts.prompts import ROUTER_SYS_PROMPT, ROUTER_USER_PROMPT
 
 
-async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
+from langchain_core.callbacks.manager import adispatch_custom_event
+from langchain_core.runnables import RunnableConfig
+from datetime import datetime
+
+
+async def router_node(state: ExcelAnalysisState, config: RunnableConfig):
     """
     Router Node - Classifies user queries using LLM with structured output.
 
@@ -25,7 +30,28 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with route_decision update
     """
+    # Helper to send status updates via queue
+    queue = config.get("configurable", {}).get("stream_queue")
+    
+    async def send_status(data):
+        if queue:
+            await queue.put(data)
+        else:
+            # Fallback for local testing or if queue not provided
+            print(f"[DEBUG NO QUEUE] {data}")
+
+    # Example of a custom yield for real-time UI updates
+    print("[DEBUG] About to dispatch status 1")
+    await send_status({
+        "type": "status",
+        "node": "router",
+        "message": "Router: Classifying user query...",
+        "payload": {},
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    print("[DEBUG] Dispatched status 1")
     print("Router: Classifying user query...")
+
 
     # Initialize LLM with structured output
     from my_agent.core.llm_client import litellm_completion
@@ -33,15 +59,28 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     # Get the latest user query
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
     if not user_messages:
-        
-        return {
-            "route_decision": {
-                "route": "chat",
-                "reasoning": "No user query found"
-            }
-        }
+        await send_status({
+            "type": "error",
+            "node": "router",
+            "message": "No user query found in the transaction history.",
+            "payload": {
+                "error": "Missing user message"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        print("[DEBUG] Dispatched error")
+        # Don't return here, return a valid state update
+        return 
 
     user_query = user_messages[-1].content
+    
+    print("[DEBUG] About to dispatch status 2")
+    # await send_status({
+    #     "type": "status",
+    #     "message": "Analyzing conversation context...",
+    #     "node": "router"
+    # })
+    print("[DEBUG] Dispatched status 2")
 
     # Get last 5 high-level messages for context (user queries and AI responses)
     recent_messages = state["messages"][-10:] if len(state["messages"]) > 10 else state["messages"]
@@ -97,8 +136,8 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
             description="Explanation for this classification"
         )
 
-    print(f"[DEBUG ROUTER] SYSTEM PROMPT: {system_prompt.content}")
-    print(f"[DEBUG ROUTER] USER PROMPT: {user_prompt.content}")
+    # print(f"[DEBUG ROUTER] SYSTEM PROMPT: {system_prompt.content}")
+    # print(f"[DEBUG ROUTER] USER PROMPT: {user_prompt.content}")
 
     # Get structured output
     response = await litellm_completion(
@@ -108,7 +147,7 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
     )
     
     # print("[DEBUG ROUTER] Router Decision obtained.")
-    print(f"[DEBUG ROUTER] Route: {response.route}")
+    # print(f"[DEBUG ROUTER] Route: {response.route}")
     # print(f"[DEBUG ROUTER] Reasoning: {response.reasoning}")
 
     route_decision: RouterDecision = {
@@ -116,9 +155,21 @@ async def router_node(state: ExcelAnalysisState) -> Dict[str, Any]:
         "reasoning": response.reasoning
     }
 
-    # print(f"✅ Router Decision: {response.route}")
-    # print(f"   Reasoning: {response.reasoning}")
+# Yield the decision as a custom event
+    print("[DEBUG] About to dispatch decision")
+    await send_status({
+        "type": "decision",
+        "node": "router",
+        "message": f"Query classified as: {response.route}",
+        "payload": {
+            "route": response.route,
+            "reasoning": response.reasoning
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    print("[DEBUG] Dispatched decision")
 
     return {
         "route_decision": route_decision
     }
+

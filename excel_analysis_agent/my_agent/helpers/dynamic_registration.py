@@ -17,6 +17,7 @@ def register_pipelines_from_attachments(attachments: List[Dict[str, Any]]) -> Li
     from my_agent.pipelines.document import DocumentPipeline
     from my_agent.pipelines.powerpoint import PowerPointPipeline
     from my_agent.pipelines.codebase import CodebasePipeline
+    from my_agent.pipelines.code import CodePipeline
     
     # Map type to Pipeline Class
     # This allows us to instantiate pipelines on-demand
@@ -27,6 +28,11 @@ def register_pipelines_from_attachments(attachments: List[Dict[str, Any]]) -> Li
         "powerpoint": PowerPointPipeline,
         "ppt": PowerPointPipeline, # Alias
         "codebase": CodebasePipeline,
+        "code": CodePipeline,
+        "py": CodePipeline,
+        "python": CodePipeline,
+        "js": CodePipeline,
+        "javascript": CodePipeline,
         "image": None # Placeholder for future
     }
     

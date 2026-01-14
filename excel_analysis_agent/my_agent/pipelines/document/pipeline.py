@@ -10,6 +10,7 @@ from .prompts import (
     DOCUMENT_CODING_SYSTEM_PROMPT,
     DOCUMENT_CODING_USER_PROMPT,
 )
+from my_agent.tools.tools import python_repl_tool, think_tool
 
 
 class DocumentPipeline(AssetPipeline):
@@ -87,3 +88,9 @@ class DocumentPipeline(AssetPipeline):
     def get_coding_user_prompt(self) -> str:
         """Return document-specific coding agent user prompt template."""
         return DOCUMENT_CODING_USER_PROMPT
+
+    def get_tools(self) -> List[Any]:
+        """Return document-specific tools."""
+        # Only python_repl_tool for computational text processing
+        # No think_tool needed - full document text is already in context
+        return []

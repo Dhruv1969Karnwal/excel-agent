@@ -1,21 +1,28 @@
 import httpx
 import json
+import base64
+import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 
+# Import the new Dokploy client
+from my_agent.helpers.dokploy_client import DokployClient
 
-from my_agent.helpers.sandbox_client import (
-    execute_code_via_server,
-    install_package_via_server,
-    reset_context_via_server,
-)
+# Global client instance
+_dokploy_client = None
 
+def get_dokploy_client() -> DokployClient:
+    global _dokploy_client
+    if _dokploy_client is None:
+        _dokploy_client = DokployClient()
+    return _dokploy_client
 
 async def reset_execution_context():
-    """Reset the execution context in the sandbox server."""
-    await reset_context_via_server()
-
+    """Reset the execution context."""
+    global _dokploy_client
+    _dokploy_client = DokployClient() # Just create a fresh client to clear history
 
 @tool(parse_docstring=True)
 def think_tool(reflection: str) -> str:
@@ -48,29 +55,28 @@ def think_tool(reflection: str) -> str:
 
 
 @tool
-async def python_repl_tool(code: str) -> Dict[str, Any]:
+async def python_repl_tool(code: str, file_paths: Optional[List[str]] = None) -> Dict[str, Any]:
     """
-    Execute Python code in a sandboxed environment with persistent context.
+    Execute Python code in a sandboxed environment (Dokploy) with persistent context.
 
-    This tool executes Python code via HTTP request to a sandbox server running
-    in a separate process. The execution context persists across multiple calls,
-    allowing variables, DataFrames, and imports to be reused.
+    This tool executes Python code via a remote Dokploy container. 
+    The execution context persists across multiple calls by replaying history.
 
-    The sandbox has the following libraries pre-installed:
+    The environment has the following libraries installed:
     - Data: pandas, numpy, openpyxl
     - Visualization: matplotlib, seaborn
     - Statistics & ML: scipy, statsmodels, scikit-learn
     - Utilities: tabulate, python-dateutil
 
     The tool automatically:
-    - Detects and saves matplotlib plots to disk
-    - Formats pandas DataFrames as markdown tables
+    - Detects and saves matplotlib plots to disk (.vdb/plots/...)
     - Returns structured output for creating artifacts
 
     Args:
-        code: Python code to execute. Should be valid Python code that can include
-              imports, variable assignments, data processing, and print statements.
+        code: Python code to execute. Should be valid Python code.
               Variables and imports persist across calls within the same session.
+        file_paths: Optional list of local file paths to upload to the execution environment.
+                    These files will be available in the current working directory.
 
     Returns:
         Dictionary containing:
@@ -78,62 +84,67 @@ async def python_repl_tool(code: str) -> Dict[str, Any]:
             - output: Captured stdout from the code execution
             - error: Error message if execution failed, None otherwise
             - plots: List of saved plot file paths
-            - tables: List of formatted markdown tables with descriptions
+            - tables: List of formatted markdown tables (currently empty for Dokploy)
 
     Example:
-        >>> await python_repl_tool("import pandas as pd\\ndf = pd.DataFrame({'a': [1, 2, 3]})")
-        {'success': True, 'output': '', 'error': None, 'plots': [], 'tables': []}
+        >>> await python_repl_tool("import pandas as pd\\ndf = pd.read_excel('data.xlsx')")
+        {'success': True, 'output': '...', 'error': None, 'plots': [], 'tables': []}
     """
-    print(f"[Python REPL DEBUG inside tools.py] Executing code: {code}")
-    return await execute_code_via_server(code)
+    print(f"[Python REPL via Dokploy] Executing code (UPDATED): {code}")
+    print(f"[Python REPL via Dokploy] DEBUG: file_paths received: {file_paths}")
+    if file_paths:
+        print(f"[Python REPL via Dokploy] Including files: {file_paths}")
+    
+    client = get_dokploy_client()
+    result = await client.execute_code(code, file_paths=file_paths)
+    
+    with open("result_inside_execute_code.txt", "w") as f:
+        f.write(str(result))
+    # Process plots: Save base64 strings to files
+    saved_plots = []
+    if result.get("plots"):
+        # Ensure directory exists: .vdb/plots/{uuid}
+        # We'll use a single directory for the session or per request? 
+        # User asked for: .vdb/plots/uuid...
+        # Let's generate a unique request ID for this batch of plots
+        request_uuid = str(uuid.uuid4())
+        plots_dir = Path(".vdb/plots") / request_uuid
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        
+        for i, plot_b64 in enumerate(result["plots"]):
+            try:
+                plot_data = base64.b64decode(plot_b64)
+                file_path = plots_dir / f"plot_{request_uuid}_{i}.png"
+                with open(file_path, "wb") as f:
+                    f.write(plot_data)
+                saved_plots.append(str(file_path.absolute()))
+                print(f"📊 Saved plot to {file_path}")
+            except Exception as e:
+                print(f"❌ Error saving plot {i}: {e}")
+                
+    result["plots"] = saved_plots
+    
+    # Pass through tables if we implement table detection later
+    if "tables" not in result:
+        result["tables"] = []
+        
+    return result
 
 
 @tool
 async def bash_tool(command: str) -> Dict[str, Any]:
     """
-    Execute bash commands in the sandbox environment, primarily for installing packages.
-
-    This tool allows you to install Python packages in the sandbox environment
-    via HTTP request to the sandbox server without affecting the main application.
-
-    Common use cases:
-    - Install additional Python packages: "pip install statsmodels"
-    - Install specific versions: "pip install scikit-learn==1.3.0"
-    - Install multiple packages: "pip install seaborn scipy"
-
-    Args:
-        command: Bash command to execute. Currently supports pip install commands.
-
-    Returns:
-        Dictionary containing:
-            - success: Boolean indicating if command was successful
-            - output: Command output
-            - error: Error message if command failed, None otherwise
-
-    Example:
-        >>> await bash_tool("pip install statsmodels")
-        {'success': True, 'output': 'Successfully installed statsmodels...', 'error': None}
+    Execute bash commands. 
+    
+    NOTE: With Dokploy integration, dynamic pip installs are not persisted 
+    unless we add them to the Code History as !pip magic commands or similar.
+    For now, we return a warning or try to implement it.
     """
-    # Parse the command to extract package installation
-    if command.strip().startswith("pip install"):
-        # Extract package name(s)
-        parts = command.strip().split()
-        if len(parts) >= 3:
-            # Join all parts after "pip install" to handle multiple packages
-            package_spec = " ".join(parts[2:])
-            return await install_package_via_server(package_spec)
-        else:
-            return {
-                "success": False,
-                "output": "",
-                "error": "Invalid pip install command. Usage: pip install <package_name>"
-            }
-    else:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Only 'pip install' commands are supported in the sandbox. Example: pip install statsmodels"
-        }
+    return {
+        "success": False,
+        "output": "",
+        "error": "Bash tool is currently limited in Dokploy environment. Please use python_repl_tool for code execution."
+    }
 
 # Configuration for remote search
 SEARCH_URL = "https://backend.v3.codemateai.dev/knowledge/search"
@@ -191,4 +202,3 @@ async def document_search_tool(query: str, kbid: str) -> str:
     except Exception as e:
         print(f"Error in document_search_tool: {e}")
         return f"Error performing document search: {str(e)}"
-

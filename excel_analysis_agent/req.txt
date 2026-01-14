@@ -1,0 +1,31 @@
+# Core dependencies for Unified Analysis Agent
+# Supports: Excel, Documents, PowerPoint
+
+# LangChain and LangGraph
+langchain
+langchain-core
+langchain-openai
+langgraph
+litellm
+
+# Data processing (for sandbox)
+pandas
+numpy
+openpyxl
+matplotlib
+tabulate
+
+# Document processing (Word, PDF)
+python-docx>=0.8.11
+PyPDF2>=3.0.0
+
+# PowerPoint processing
+python-pptx>=0.6.21
+
+# HTTP client for sandbox communication
+httpx
+
+# FastAPI server for sandbox (dev dependency)
+fastapi
+uvicorn[standard]
+

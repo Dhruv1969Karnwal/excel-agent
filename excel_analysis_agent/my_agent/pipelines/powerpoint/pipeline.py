@@ -10,6 +10,7 @@ from .prompts import (
     PPTX_CODING_SYSTEM_PROMPT,
     PPTX_CODING_USER_PROMPT,
 )
+from my_agent.tools.tools import python_repl_tool, think_tool, bash_tool
 
 
 class PowerPointPipeline(AssetPipeline):
@@ -85,3 +86,7 @@ class PowerPointPipeline(AssetPipeline):
     def get_coding_user_prompt(self) -> str:
         """Return PowerPoint-specific coding agent user prompt template."""
         return PPTX_CODING_USER_PROMPT
+
+    def get_tools(self) -> List[Any]:
+        """Return PowerPoint-specific tools."""
+        return [think_tool]

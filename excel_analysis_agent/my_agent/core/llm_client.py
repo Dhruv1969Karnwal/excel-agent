@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Union, Type
 from pydantic import BaseModel
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 import json
+from datetime import datetime
 
 # LiteLLM Configuration
 BASE_URL = "https://backend.v3.codemateai.dev/v2"
@@ -168,4 +169,70 @@ async def litellm_completion(
     except Exception as e:
         # print(f"[ERROR] LiteLLM API call or processing failed: {e}")
         # print("-" * 80)
+        raise
+
+
+
+
+async def litellm_completion_stream(
+    messages: List[BaseMessage],
+    queue: asyncio.Queue,
+    temperature: float = 0,
+    **kwargs
+) -> AIMessage:
+    """
+    Call LiteLLM with streaming and send chunks to queue.
+    Returns the final accumulated AIMessage.
+    """
+    formatted_messages = [convert_message_to_dict(m) for m in messages]
+    
+    litellm_kwargs = {
+        "model": MODEL,
+        "messages": formatted_messages,
+        "base_url": BASE_URL,
+        "api_key": API_KEY,
+        "temperature": temperature,
+        "custom_llm_provider": "openai",
+        "stream": True,  # Enable streaming
+        **kwargs
+    }
+    
+    try:
+        response = await litellm.acompletion(**litellm_kwargs)
+        
+        full_content = ""
+        full_reasoning = ""
+        
+        async for chunk in response:
+            delta = chunk.choices[0].delta
+            
+            # Handle reasoning_content (for models like DeepSeek-R1)
+            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                full_reasoning += delta.reasoning_content
+                await queue.put({
+                    "type": "reasoning_chunk",
+                    "node": "finalize_analysis",
+                    "message": "reasoning_chunk in finalize_analysis_node",
+                    "payload": {
+                        "reasoning_content": delta.reasoning_content
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            
+            # Handle regular content
+            if hasattr(delta, 'content') and delta.content:
+                full_content += delta.content
+                await queue.put({
+                    "type": "content_chunk",
+                    "node": "finalize_analysis",
+                    "message": "content_chunk in finalize_analysis_node",
+                    "payload": {
+                        "content": delta.content
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+        
+        return AIMessage(content=full_content), full_reasoning
+        
+    except Exception as e:
         raise

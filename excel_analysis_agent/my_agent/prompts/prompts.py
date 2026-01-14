@@ -55,8 +55,8 @@ FORMAT YOUR RESPONSE AS FOLLOWS:
 First, provide a numbered list of concrete steps.
 Then, on a new line, add "---STEPS---"
 Then, list each step in this exact JSON format:
-{{"description": "step description", "order": 1}}
-{{"description": "step description", "order": 2}}
+{{"description": "step description", "order": 1, "assigned_agent": "Excel"}}
+{{"description": "step description", "order": 2, "assigned_agent": "Document"}}
 etc."""
 
 CODING_AGENT_SYS_PROMPT = """You are a Coding Agent specialized in multi-asset analysis using Python and specialized search tools.

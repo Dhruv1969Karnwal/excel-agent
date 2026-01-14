@@ -10,7 +10,12 @@ from .prompts import (
     EXCEL_CODING_SYSTEM_PROMPT,
     EXCEL_CODING_USER_PROMPT,
 )
+from my_agent.tools.tools import python_repl_tool, think_tool, bash_tool
 
+def complete_step_placeholder():
+    # This is a placeholder as complete_step is defined locally in coding_agent_node
+    # We will handle this in the coding_agent_node by injecting it.
+    pass
 
 class ExcelPipeline(AssetPipeline):
     """
@@ -83,3 +88,7 @@ class ExcelPipeline(AssetPipeline):
     def get_coding_user_prompt(self) -> str:
         """Return Excel-specific coding agent user prompt template."""
         return EXCEL_CODING_USER_PROMPT
+
+    def get_tools(self) -> List[Any]:
+        """Return Excel-specific tools."""
+        return [python_repl_tool, think_tool, bash_tool]

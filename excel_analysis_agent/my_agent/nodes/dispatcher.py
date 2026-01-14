@@ -85,14 +85,15 @@ Your SOLE objective right now is to execute Step {current_step.get('order')}:
     full_sys_prompt = sys_prompt + orchestrator_instructions
     
     # Construct User Prompt
-    from my_agent.helpers.sandbox import PLOTS_DIR
+    # from my_agent.helpers.sandbox import PLOTS_DIR
     user_query = state.get("user_query")
     data_contexts = state.get("data_contexts", {})
     
     context_parts = []
     for aid, ctx in data_contexts.items():
         desc = ctx.get("description", "")
-        context_parts.append(f"### Asset: {aid} ###\n{desc}")
+        file_name = ctx.get("file_name", "")
+        context_parts.append(f"### Asset: {file_name} ###\n{desc}")
     full_data_context = "\n\n".join(context_parts)
 
     # Primary asset for template
@@ -108,7 +109,7 @@ Your SOLE objective right now is to execute Step {current_step.get('order')}:
                  analysis_plan=current_step.get("description"),
                  data_context=full_data_context,
                  file_path=primary_asset_id,
-                 plots_dir=str(PLOTS_DIR),
+                #  plots_dir=str(PLOTS_DIR),
                  # Fallbacks for older templates
                  excel_file_path=primary_asset_id,
                  full_text=state.get("full_text", "N/A"),
@@ -131,7 +132,6 @@ Data Context:
 --- ACTION REQUIRED ---
 Execute Step {current_step.get('order')}: {current_step.get('description')}
 
-Plots should be saved to: {PLOTS_DIR}
 """
 
     return {

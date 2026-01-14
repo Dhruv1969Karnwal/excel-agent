@@ -10,6 +10,7 @@ from .prompts import (
     CODEBASE_CODING_SYSTEM_PROMPT,
     CODEBASE_CODING_USER_PROMPT,
 )
+from my_agent.tools.tools import python_repl_tool, think_tool, document_search_tool
 
 
 class CodebasePipeline(AssetPipeline):
@@ -77,3 +78,7 @@ class CodebasePipeline(AssetPipeline):
     
     def get_coding_user_prompt(self) -> str:
         return CODEBASE_CODING_USER_PROMPT
+
+    def get_tools(self) -> List[Any]:
+        """Return codebase-specific tools."""
+        return [document_search_tool, think_tool]

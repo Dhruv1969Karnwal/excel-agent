@@ -12,8 +12,10 @@ from my_agent.pipelines.registry import registry
 # Fallback prompts for backward compatibility
 # from my_agent.prompts.prompts import PLANNING_SYS_PROMPT, PLANNING_USER_PROMPT
 from pprint import pprint
+from langchain_core.runnables import RunnableConfig
+from datetime import datetime
 
-async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
+async def planning_node(state: UnifiedAnalysisState, config: RunnableConfig ) -> Dict[str, Any]:
     """
     Planning Node - Creates a detailed analysis plan.
 
@@ -32,8 +34,24 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     Returns:
         Dictionary with analysis_plan and analysis_steps updates
     """
-    print("Planning: Creating analysis plan...")
 
+    queue = config.get("configurable", {}).get("stream_queue")
+
+    async def send_status(data):
+        if queue:
+            await queue.put(data)
+        else:
+            # Fallback for local testing or if queue not provided
+            print(f"[DEBUG NO QUEUE] {data}")
+
+    print("Planning: Creating analysis plan...")
+    await send_status({
+        "type": "status",
+        "node": "planning",
+        "message": "Planning: Creating analysis plan...",
+        "payload": {},
+        "timestamp": datetime.utcnow().isoformat()
+    })
     # Initialize LLM
     from my_agent.core.llm_client import litellm_completion
 
@@ -42,15 +60,16 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
 
     # Get data contexts (plural)
     data_contexts = state.get("data_contexts") or {}
-    print("[Planning DEBUG inside planning_node] Data contexts: ")
-    pprint(data_contexts, indent=2)
+    # print("[Planning DEBUG inside planning_node] Data contexts: ")
+    # pprint(data_contexts, indent=2)
     combined_data_context = ""
     
     if data_contexts:
         context_parts = []
         for asset_id, ctx in data_contexts.items():
             desc = ctx.get("description", "No description")
-            context_parts.append(f"--- Asset: {asset_id} ---\n{desc}")
+            file_name = ctx.get("file_name", "No file name")
+            context_parts.append(f"--- Asset: {file_name} ---\n{desc}")
         combined_data_context = "\n\n".join(context_parts)
     else:
         combined_data_context = "No data loaded."
@@ -160,6 +179,19 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
     analysis_plan_text = response_text
     structured_steps = []
 
+    await send_status({
+        "type": "plan",
+        "node": "planning",
+        "message": "Analysis plan generated successfully.",
+        "payload": {
+            "plan_text": analysis_plan_text
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+    # with open("response.txt", "w") as f:
+    #     f.write(response_text)
+
     # Check if response contains structured steps
     if "---STEPS---" in response_text:
         parts = response_text.split("---STEPS---")
@@ -185,15 +217,25 @@ async def planning_node(state: UnifiedAnalysisState) -> Dict[str, Any]:
             except json.JSONDecodeError:
                 print(f"⚠️ Could not parse step JSON: {match}")
                 continue
-
+    
+    await send_status({
+        "type": "steps",
+        "node": "planning",
+        "message": f"Identified {len(structured_steps)} analysis steps.",
+        "payload": {
+            "steps": structured_steps
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
     if structured_steps:
-        print(f"[DEBUG] Created {len(structured_steps)} structured analysis steps")
-    else:
-        print("[DEBUG] No structured steps found, using text plan only")
+        print(f"[Planning DEBUG inside planning_node] Created {len(structured_steps)} structured analysis steps and all steps are {structured_steps}")
+    #     print(f"[DEBUG] Created {len(structured_steps)} structured analysis steps")
+    # else:
+    #     print("[DEBUG] No structured steps found, using text plan only")
 
-    print(f"[DEBUG] Planning: Analysis plan created with {len(structured_steps)} structured steps.")
-    for step in structured_steps:
-        print(f"  - Step {step['order']}: {step['description']}")
+    # print(f"[DEBUG] Planning: Analysis plan created with {len(structured_steps)} structured steps.")
+    # for step in structured_steps:
+    #     print(f"  - Step {step['order']}: {step['description']}")
 
     print("[Planning DEBUG inside planning_node] Analysis plan is ", analysis_plan_text)
     print("[Planning DEBUG inside planning_node] Structured steps are ", structured_steps)

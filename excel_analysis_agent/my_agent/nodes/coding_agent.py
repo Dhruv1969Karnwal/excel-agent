@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Sequence
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from my_agent.helpers.sandbox import PLOTS_DIR
+from pathlib import Path
+# PLOTS_DIR = Path(".vdb/plots")
 from my_agent.models.state import AnalysisStep, CodingSubgraphState
 from my_agent.pipelines.registry import registry
 # Fallback prompts for backward compatibility
@@ -15,6 +16,8 @@ from pathlib import Path
 
 import json
 from pprint import pprint
+from datetime import datetime
+from langchain_core.runnables import RunnableConfig
 
 def display_step_progress(steps: Sequence[AnalysisStep]) -> None:
     """
@@ -45,7 +48,7 @@ def display_step_progress(steps: Sequence[AnalysisStep]) -> None:
     print()
 
 
-async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
+async def coding_agent_node(state: CodingSubgraphState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Coding Agent Node - Executes Python code to perform data analysis.
 
@@ -64,8 +67,26 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
     Returns:
         Dictionary with execution_result and messages updates
     """
+    queue = config.get("configurable", {}).get("stream_queue")
+
+    async def send_status(data):
+        if queue:
+            await queue.put(data)
+        else:
+            # Fallback for local testing or if queue not provided
+            print(f"[DEBUG NO QUEUE] {data}")
+
     code_iterations = state.get("code_iterations", 0)
     print(f"[Coding Agent DEBUG inside coding_agent_node] Coding Agent: Starting iteration {state.get('code_iterations', 0) + 1}...")
+    await send_status({
+        "type": "status",
+        "node": "coding_agent",
+        "message": f"Coding Agent: Starting iteration {state.get('code_iterations', 0) + 1}...",
+        "payload": {
+            "iteration": state.get('code_iterations', 0) + 1
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
 
     # Display step progress if available
     analysis_steps = state.get("analysis_steps", [])
@@ -74,11 +95,18 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         for step in state["analysis_steps"]:
             status = "[DONE]" if step["status"] == "completed" else "[TODO]"
             print(f"   {status} {step['order']}. {step['description']}")
-
+            
+    await send_status({
+        "type": "steps",
+        "node": "coding_agent",
+        "message": "Reporting current analysis step progress.",
+        "payload": {
+            "steps": analysis_steps
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
     # Initialize LLM with tool calling
-    # Initialize LLM with tool calling
-    from my_agent.core.llm_client import litellm_completion
-    from my_agent.tools.tools import bash_tool, python_repl_tool, think_tool, document_search_tool
+    from my_agent.core.llm_client import litellm_completion, litellm_completion_stream
     from langchain_core.tools import tool
 
     @tool
@@ -101,6 +129,21 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
     active_step_index = state.get("active_step_index", -1)
     
     if active_step_index >= 0 and code_iterations == 0:
+        # Filter tools based on assigned agent
+        analysis_steps = state.get("analysis_steps", [])
+        if active_step_index < len(analysis_steps):
+            current_step = analysis_steps[active_step_index]
+            assigned_agent = current_step.get("assigned_agent", "General").lower()
+            
+            try:
+                pipeline = registry.get_pipeline_by_name(assigned_agent)
+                # Get pipeline-specific tools and always add complete_step
+                agent_tools = pipeline.get_tools()
+                tools = agent_tools + [complete_step]
+                print(f"[Coding Agent] Specialist '{assigned_agent}' active. Tools restricted to: {[t.name for t in tools]}")
+            except Exception as e:
+                print(f"[Coding Agent] Could not filter tools for agent '{assigned_agent}': {e}. Using full toolset.")
+
         # Dispatcher has already set the correct system and user prompts
         print(f"[Coding Agent] Dispatcher mode active for Step Index {active_step_index}. Using provided prompts.")
         messages = state.get("messages", [])
@@ -172,6 +215,10 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
             header = "You are a Multi-Asset Coding Agent. You must combine the capabilities of the following specialists:"
             coding_sys_prompt = f"{header}\n\n" + "\n\n".join(sys_instructions)
             
+            # Use all tools for mixed-asset mode
+            tools = [python_repl_tool, think_tool, bash_tool, document_search_tool, complete_step]
+            print(f"[Coding Agent] Mixed asset mode active. Using full toolset: {[t.name for t in tools]}")
+
             # IMPORTANT: When mixed, ALWAYS append the strong Agentic Looping instructions 
             # (usually found in the Excel/Global prompt) to ensure it doesn't stop early.
             agentic_loop_instructions = """
@@ -207,11 +254,12 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         
         for aid, ctx in data_contexts.items():
             desc = ctx.get("description", "")
-            context_parts.append(f"### Asset: {aid} ###\n{desc}")
+            file_name = ctx.get("file_name", "")
+            context_parts.append(f"### Asset: {file_name} ###\n{desc}")
             if ctx.get("full_text"):
-                full_texts.append(f"### Full Text: {aid} ###\n{ctx['full_text']}")
+                full_texts.append(f"### Full Text: {file_name} ###\n{ctx['full_text']}")
             if ctx.get("slides"):
-                slide_counts.append(f"{aid}: {len(ctx['slides'])} slides")
+                slide_counts.append(f"{file_name}: {len(ctx['slides'])} slides")
         
         full_data_context_str = "\n\n".join(context_parts)
         combined_full_text = "\n\n".join(full_texts)
@@ -222,7 +270,7 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
             "analysis_plan": state.get("analysis_plan", ""),
             "data_context": full_data_context_str,
             "file_path": primary_asset_id or "N/A",
-            "plots_dir": str(PLOTS_DIR),
+            # "plots_dir": str(PLOTS_DIR),
             "kbid": kbid or "N/A",
             "excel_file_path": primary_asset_id or "N/A",
             "full_text": combined_full_text or "N/A",
@@ -283,6 +331,8 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
              messages = [SystemMessage(content=CODING_AGENT_SYS_PROMPT)] + conversation_history
 
     print("[Coding Agent DEBUG inside coding_agent_node] Messages:")
+    # with open("debug_messages.txtw", "w") as f:
+    #     f.write(str(messages))
     pprint(messages, indent=2)
     # Invoke the LLM
     response = await litellm_completion(
@@ -290,6 +340,18 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
         tools=tools,
         temperature=0
     )
+
+    await send_status({
+        "type": "response",
+        "node": "coding_agent",
+        "message": "Coding Agent generated a response.",
+        "payload": {
+            "content": str(response.content),
+            "tool_calls": getattr(response, "tool_calls", []),
+            "code_iterations": state.get("code_iterations", 0) + 1
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    })
 
 
     print("[Coding Agent DEBUG inside coding_agent_node] Response:")
@@ -302,7 +364,7 @@ async def coding_agent_node(state: CodingSubgraphState) -> Dict[str, Any]:
     }
 
 
-async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
+async def tool_execution_node(state: CodingSubgraphState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Tool Execution Node - Executes the tools called by the coding agent.
 
@@ -317,9 +379,26 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
     Returns:
         Dictionary with messages containing tool results
     """
-    from langchain_core.messages import ToolMessage
 
+    queue = config.get("configurable", {}).get("stream_queue")
+
+    async def send_status(data):
+        if queue:
+            await queue.put(data)
+        else:
+            # Fallback for local testing or if queue not provided
+            print(f"[DEBUG NO QUEUE] {data}")
+
+    from langchain_core.messages import ToolMessage
+    
     print("[Coding Agent DEBUG inside tool_execution_node] Tool Execution: Executing tool calls...")
+    await send_status({
+        "type": "status",
+        "node": "tool_execution",
+        "message": "Tool Execution: Processing requested tools...",
+        "payload": {},
+        "timestamp": datetime.utcnow().isoformat()
+    })
 
     # Get the last message (should be from the coding agent with tool calls)
     last_message = state["messages"][-1]
@@ -331,8 +410,18 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
             from langchain_core.messages import HumanMessage
             return {"messages": [HumanMessage(content="You haven't called any tools. If you are finished with this step, you MUST call 'complete_step(summary=...)'.")]}
         return {"messages": []}
-
+    
     tool_messages = []
+    if last_message.tool_calls:
+        await send_status({
+            "type": "tool_calls",
+            "node": "tool_execution",
+            "message": f"Executing {len(last_message.tool_calls)} tool calls.",
+            "payload": {
+                "tool_calls": last_message.tool_calls
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
 
     # Execute each tool call
     for tool_call in last_message.tool_calls:
@@ -344,9 +433,28 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
         # Execute the appropriate tool asynchronously
         if tool_name == "python_repl_tool":
+            await send_status({
+                "type": "tool_call_start",
+                "node": "tool_execution",
+                "message": f"Starting tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Inject asset paths into tool_args if not already provided
+            if "file_paths" not in tool_args:
+                assets = state.get("assets", [])
+                file_paths = [a.get("path") for a in assets if a.get("path")]
+                if file_paths:
+                    print(f"[Tool Execution] Injecting asset paths: {file_paths}")
+                    tool_args["file_paths"] = file_paths
+            
             # Use ainvoke to run the blocking exec() call in a thread pool
             result = await python_repl_tool.ainvoke(tool_args)
 
+            
             # Create a tool message with the result
             tool_message = ToolMessage(
                 content=str(result),
@@ -355,15 +463,48 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
             )
             tool_messages.append(tool_message)
 
+            await send_status({
+                "type": "tool_call_end",
+                "node": "tool_execution",
+                "message": f"Completed tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call,
+                    "result": result
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
             # Store execution result in state
             if result.get("success"):
                 print("[Coding Agent DEBUG inside tool_execution_node] Tool execution successful")
+                
             else:
                 print(f"[Coding Agent DEBUG inside tool_execution_node] Tool execution failed: {result.get('error')}")
+                
 
         elif tool_name == "bash_tool":
             # Execute bash_tool for package installation
+            await send_status({
+                "type": "tool_call_start",
+                "node": "tool_execution",
+                "message": f"Starting tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
             result = await bash_tool.ainvoke(tool_args)
+
+            await send_status({
+                "type": "tool_call_end",
+                "node": "tool_execution",
+                "message": f"Completed tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call,
+                    "result": result
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
 
             # Create a tool message with the result
             tool_message = ToolMessage(
@@ -381,7 +522,27 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
         elif tool_name == "think_tool":
             # Execute think_tool for reflection (lightweight, no need for thread pool)
+            await send_status({
+                "type": "tool_call_start",
+                "node": "tool_execution",
+                "message": f"Starting tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
             result = await think_tool.ainvoke(tool_args)
+
+            await send_status({
+                "type": "tool_call_end",
+                "node": "tool_execution",
+                "message": f"Completed tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call,
+                    "result": result
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
 
             # Create a tool message with the result
             tool_message = ToolMessage(
@@ -394,7 +555,27 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
         elif tool_name == "document_search_tool":
             # Execute document_search_tool (RAG)
+            await send_status({
+                "type": "tool_call_start",
+                "node": "tool_execution",
+                "message": f"Starting tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
             result = await document_search_tool.ainvoke(tool_args)
+
+            await send_status({
+                "type": "tool_call_end",
+                "node": "tool_execution",
+                "message": f"Completed tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call,
+                    "result": result
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
 
             # Create a tool message with the result
             tool_message = ToolMessage(
@@ -407,9 +588,29 @@ async def tool_execution_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
         elif tool_name == "complete_step":
             # Execute complete_step (State Update)
+            await send_status({
+                "type": "tool_call_start",
+                "node": "tool_execution",
+                "message": f"Starting tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
             result = "Step marked as complete."
             summary = tool_args.get("summary", "Step completed.")
             
+            await send_status({
+                "type": "tool_call_end",
+                "node": "tool_execution",
+                "message": f"Completed tool: {tool_name}",
+                "payload": {
+                    "tool_call": tool_call,
+                    "result": result
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
             # Update state
             active_step_index = state.get("active_step_index", -1)
             steps = state.get("analysis_steps", [])
@@ -501,7 +702,7 @@ def should_continue_coding(state: CodingSubgraphState) -> str:
     return "continue"
 
 
-async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
+async def finalize_analysis_node(state: CodingSubgraphState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Finalize Analysis Node - Creates the final analysis summary with structured artifacts.
 
@@ -517,7 +718,21 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
     Returns:
         Dictionary with final_analysis, artifacts, and a clean message for parent
     """
-    from datetime import datetime
+    queue = config.get("configurable", {}).get("stream_queue")
+
+    async def send_status(status: Dict[str, Any]):
+        if queue:
+            await queue.put(status)
+        else:
+            print(f"[Coding Agent DEBUG inside finalize_analysis_node] Status: {status}")
+
+    await send_status({
+        "type": "status",
+        "node": "finalize_analysis_node",
+        "message": "Finalizing analysis and extracting artifacts...",
+        "payload": {},
+        "timestamp": datetime.utcnow().isoformat()
+    })
     from langchain_core.messages import ToolMessage
 
     print("[Coding Agent DEBUG inside finalize_analysis_node] Finalizing analysis and extracting artifacts...")
@@ -600,7 +815,7 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
 
     if needs_conversational_cleanup:
         print("[Coding Agent DEBUG inside finalize_analysis_node] Generating a conversational summary of findings...")
-        from my_agent.core.llm_client import litellm_completion
+        from my_agent.core.llm_client import litellm_completion, litellm_completion_stream
         
         # Prepare a prompt for the cleanup call
         cleanup_system = SystemMessage(content=(
@@ -637,11 +852,31 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
         print("[Coding Agent DEBUG inside finalize_analysis_node] Cleanup system is ")
         pprint(cleanup_system, indent=2)
         try:
-            cleanup_response = await litellm_completion(
+
+            await send_status({
+                "type": "stream_start",
+                "node": "finalize_analysis_node",
+                "message": "Starting final analysis generation...",
+                "payload": {},
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            cleanup_response, reasoning = await litellm_completion_stream(
                 messages=[cleanup_system, cleanup_user],
+                queue=queue,  # Pass the queue for streaming
                 temperature=0.2
             )
             final_analysis_text = str(cleanup_response.content)
+            await send_status({
+                "type": "stream_end",
+                "node": "finalize_analysis_node",
+                "message": "Analysis finalized successfully.",
+                "payload": {
+                    "response_content": final_analysis_text,
+                    "reasoning_content": reasoning  # Include full reasoning if needed
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
             print(f"[Coding Agent DEBUG inside finalize_analysis_node] Generated conversational summary: {len(final_analysis_text)} chars and full resposne is {final_analysis_text}")
         except Exception as e:
             print(f"[Coding Agent DEBUG inside finalize_analysis_node] Failed to generate cleanup summary: {e}")
@@ -674,8 +909,10 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
     # List plot file paths (plots are saved locally, no base64 embedding)
     plot_artifacts = [a for a in artifacts if a["type"] == "plot"]
     if plot_artifacts:
+        print("[Coding Agent DEBUG inside finalize_analysis_node] Plot artifacts: ")
+        pprint(plot_artifacts, indent=2)
         message_content += "## Generated Plots\n\n"
-        message_content += "Plots have been saved locally:\n\n"
+        message_content += "Plots have been saved on cloud:\n\n"
 
         for plot_artifact in plot_artifacts:
             plot_path = plot_artifact["content"]
@@ -687,6 +924,8 @@ async def finalize_analysis_node(state: CodingSubgraphState) -> Dict[str, Any]:
     # Add tables as markdown
     table_artifacts = [a for a in artifacts if a["type"] == "table"]
     if table_artifacts:
+        print("[Coding Agent DEBUG inside finalize_analysis_node] Table artifacts: ")
+        pprint(table_artifacts, indent=2)
         message_content += "## Data Tables\n\n"
         for table_artifact in table_artifacts:
             message_content += f"### {table_artifact['description']}\n\n"
