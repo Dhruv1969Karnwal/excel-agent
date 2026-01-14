@@ -68,7 +68,7 @@ async def inspect_code(file_path: str) -> Dict[str, Any]:
         # Add content preview
         preview_length = min(1500, len(content))
         description_parts.append(f"\nCode Preview (first {preview_length} chars):")
-        description_parts.append(f"```python\n{content[:preview_length]}\n```")
+        description_parts.append(f"```{ext}\n{content[:preview_length]}\n```")
         if len(content) > preview_length:
             description_parts.append("...")
             
